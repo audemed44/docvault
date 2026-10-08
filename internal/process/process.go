@@ -305,8 +305,37 @@ func pageCount(ctx context.Context, pdf string) (int, error) {
 	return 0, errors.New("not a readable PDF: no page count")
 }
 
-// ocr renders each page at 300 dpi and runs Tesseract on it, one page at a
-// time, so only one page image is ever on disk or in memory.
+// ocrDPI and ocrMaxPixels: pages are rendered at 300 dpi, but no longer
+// than 4200 px. Photo PDFs often say their pages are a metre wide (images
+// at 72 dpi), and at 300 dpi Tesseract runs out of memory on those.
+const (
+	ocrDPI       = 300
+	ocrMaxPixels = 4200
+)
+
+// pageDPI is the resolution to render a page at, from its size in points.
+func pageDPI(ctx context.Context, pdf string, page int) int {
+	n := strconv.Itoa(page)
+	out, err := run(ctx, "pdfinfo", "-f", n, "-l", n, pdf)
+	if err != nil {
+		return ocrDPI
+	}
+	for line := range strings.Lines(out) {
+		_, size, ok := strings.Cut(line, " size: ")
+		if !ok || !strings.HasPrefix(line, "Page") {
+			continue
+		}
+		var w, h float64
+		if _, err := fmt.Sscanf(size, "%g x %g", &w, &h); err != nil || max(w, h) <= 0 {
+			break
+		}
+		return max(50, min(ocrDPI, int(ocrMaxPixels*72/max(w, h))))
+	}
+	return ocrDPI
+}
+
+// ocr renders each page (see pageDPI) and runs Tesseract on it, one page at
+// a time, so only one page image is ever on disk or in memory.
 func ocr(ctx context.Context, pdf string, pages int, lang, tmp string) (string, error) {
 	var text strings.Builder
 	for page := 1; page <= min(pages, maxOCRPages); page++ {
@@ -315,7 +344,7 @@ func ocr(ctx context.Context, pdf string, pages int, lang, tmp string) (string, 
 		}
 		img := filepath.Join(tmp, "page")
 		n := strconv.Itoa(page)
-		if _, err := run(ctx, "pdftoppm", "-f", n, "-l", n, "-r", "300", "-gray", "-png", "-singlefile", pdf, img); err != nil {
+		if _, err := run(ctx, "pdftoppm", "-f", n, "-l", n, "-r", strconv.Itoa(pageDPI(ctx, pdf, page)), "-gray", "-png", "-singlefile", pdf, img); err != nil {
 			return "", fmt.Errorf("page %d: %w", page, err)
 		}
 		out, err := run(ctx, "tesseract", img+".png", "stdout", "-l", lang, "--psm", "3")
