@@ -250,3 +250,19 @@ func TestWorkers(t *testing.T) {
 	<-done
 }
 
+// Pages that say they're huge (photos at 72 dpi) are rendered smaller.
+func TestPageDPI(t *testing.T) {
+	need(t, "pdfinfo")
+	dir := t.TempDir()
+	a4 := filepath.Join(dir, "a4.pdf")
+	os.WriteFile(a4, textPDF("A4"), 0o644)
+	big := filepath.Join(dir, "big.pdf")
+	os.WriteFile(big, bytes.Replace(textPDF("big"), []byte("0 0 595 842"), []byte("0 0 2636 3708"), 1), 0o644)
+	ctx := context.Background()
+	if got := pageDPI(ctx, a4, 1); got != 300 {
+		t.Fatalf("A4 at %d dpi", got)
+	}
+	if got := pageDPI(ctx, big, 1); got != 81 {
+		t.Fatalf("big page at %d dpi", got)
+	}
+}
