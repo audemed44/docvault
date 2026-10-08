@@ -1,9 +1,14 @@
 import { useState } from "preact/hooks";
 import { api } from "../api";
 import type { Session } from "../types";
+import { Field } from "./ui";
 
-export function Login(props: { onDone: (s: Session) => void }) {
+/** Sign-in, or on a fresh install, creating the first (admin) account. */
+export function Login(props: { setup: boolean; onDone: (s: Session) => void }) {
   const [token, setToken] = useState("");
+  const [username, setUsername] = useState("");
+  const [name, setName] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -12,7 +17,11 @@ export function Login(props: { onDone: (s: Session) => void }) {
     setBusy(true);
     setError("");
     try {
-      props.onDone(await api.login(token));
+      props.onDone(
+        props.setup
+          ? await api.setup({ token, username, name, password })
+          : await api.login(username, password),
+      );
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -24,23 +33,60 @@ export function Login(props: { onDone: (s: Session) => void }) {
     <div class="login">
       <form class="login-card" onSubmit={submit}>
         <div class="eyebrow eyebrow-accent">Docvault</div>
-        <h1 class="login-title">Sign in</h1>
-        <p class="muted">
-          Enter the token from <code>DOCVAULT_TOKEN</code>. This browser stays signed in until the
-          token changes.
-        </p>
-        <input
-          class="input code"
-          type="password"
-          autocomplete="current-password"
-          placeholder="Token"
-          value={token}
-          autofocus
-          onInput={(e) => setToken(e.currentTarget.value)}
-        />
+        <h1 class="login-title">{props.setup ? "Set up" : "Sign in"}</h1>
+        {props.setup && (
+          <p class="muted">
+            Create the first account. It's an admin, and can add the others. Prove it's your server
+            with the <code>DOCVAULT_TOKEN</code> from its settings.
+          </p>
+        )}
+        {props.setup && (
+          <Field label="DOCVAULT_TOKEN">
+            <input
+              class="input code"
+              type="password"
+              autocomplete="off"
+              value={token}
+              onInput={(e) => setToken(e.currentTarget.value)}
+            />
+          </Field>
+        )}
+        <Field label="Username">
+          <input
+            class="input"
+            autocapitalize="none"
+            autocorrect="off"
+            autocomplete="username"
+            value={username}
+            autofocus={!props.setup}
+            onInput={(e) => setUsername(e.currentTarget.value)}
+          />
+        </Field>
+        {props.setup && (
+          <Field label="Your name" hint="Shown on what you add">
+            <input
+              class="input"
+              autocomplete="name"
+              value={name}
+              onInput={(e) => setName(e.currentTarget.value)}
+            />
+          </Field>
+        )}
+        <Field label="Password" hint={props.setup ? "At least 8 characters" : undefined}>
+          <input
+            class="input"
+            type="password"
+            autocomplete={props.setup ? "new-password" : "current-password"}
+            value={password}
+            onInput={(e) => setPassword(e.currentTarget.value)}
+          />
+        </Field>
         {error && <div class="form-error">{error}</div>}
-        <button class="btn btn-primary" disabled={!token || busy}>
-          Sign in
+        <button
+          class="btn btn-primary btn-big"
+          disabled={!username || !password || (props.setup && !token) || busy}
+        >
+          {props.setup ? "Create account" : "Sign in"}
         </button>
       </form>
     </div>
