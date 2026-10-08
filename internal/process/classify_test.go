@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -311,5 +313,41 @@ func TestOtherNeverSuggested(t *testing.T) {
 	}
 	if res.Suggestion != nil && res.Suggestion.Category != "" {
 		t.Fatalf("suggested %q", res.Suggestion.Category)
+	}
+}
+
+// Asking for a suggestion doesn't read the document again: no thumbnail,
+// page count or text extraction, just the classifier.
+func TestSuggestionOnlyKeepsReading(t *testing.T) {
+	p, st, u := setup(t)
+	ctx := context.Background()
+	fake := newFakeModel(t, `{"title":"Electricity bill - Sep 2026","category":"Bills","tags":["electricity"],"new_tags":[],"doc_date":"","expires":""}`)
+	p.Classifier = NewLLM(fake.srv.URL+"/v1", "test-key", "m")
+	d := &store.Document{OwnerID: u.ID, Title: "bill", DocDate: "2026-09-01", FileName: "bill.pdf", Mime: "application/pdf",
+		FilePath: "missing/bill.pdf", SHA256: "a"} // no file: reading it would fail
+	st.CreateDocument(ctx, d, u.ID)
+	job, _ := st.ClaimJob(ctx)
+	st.FinishJob(ctx, job.ID, store.JobResult{Pages: 3, Text: "MSEDCL electricity bill", TextSource: "ocr", OCRLang: "eng"})
+	os.MkdirAll(filepath.Dir(p.Thumb(d.ID)), 0o755)
+	os.WriteFile(p.Thumb(d.ID), []byte("jpeg"), 0o644)
+
+	if err := st.Requeue(ctx, u.ID, d.ID, false, "", true); err != nil {
+		t.Fatal(err)
+	}
+	job, _ = st.ClaimJob(ctx)
+	res := p.process(ctx, job)
+	if res.Error != "" || res.Pages != 3 || res.TextSource != "ocr" || res.Text != "MSEDCL electricity bill" {
+		t.Fatalf("read again: %+v", res)
+	}
+	if res.Suggestion == nil || res.Suggestion.Category != "Bills" || len(fake.requests) != 1 {
+		t.Fatalf("suggestion %+v", res.Suggestion)
+	}
+
+	// Run OCR again reads it in full (and fails here, with no file).
+	st.FinishJob(ctx, job.ID, res)
+	st.Requeue(ctx, u.ID, d.ID, true, "eng", false)
+	job, _ = st.ClaimJob(ctx)
+	if res := p.process(ctx, job); res.Error == "" {
+		t.Fatal("Run OCR again didn't read the file")
 	}
 }

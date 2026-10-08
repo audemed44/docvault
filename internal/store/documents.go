@@ -675,10 +675,11 @@ type Job struct {
 	ForceOCR bool
 	OCRLang  string
 	Title    string
-	// TextSource and Text are what an earlier run found, so OCR isn't
-	// repeated unless it's asked for.
+	// TextSource, Text and Pages are what an earlier run found, so OCR
+	// isn't repeated unless it's asked for.
 	TextSource string
 	Text       string
+	Pages      int
 	// WantSuggestion: someone asked for a suggestion for it.
 	WantSuggestion bool
 	// OwnerID is whose library it's in (0: the Family space).
@@ -712,8 +713,8 @@ func (s *Store) ClaimJob(ctx context.Context) (*Job, error) {
 	var j Job
 	err := s.db.QueryRowContext(ctx, `UPDATE documents SET status = 'processing', error = ''
 		WHERE id = (SELECT id FROM documents WHERE status = 'pending' ORDER BY id LIMIT 1)
-		RETURNING id, file_path, mime, force_ocr, ocr_lang, title, text_source, want_suggestion, ifnull(owner_id, 0)`).
-		Scan(&j.ID, &j.FilePath, &j.Mime, &j.ForceOCR, &j.OCRLang, &j.Title, &j.TextSource, &j.WantSuggestion, &j.OwnerID)
+		RETURNING id, file_path, mime, force_ocr, ocr_lang, title, text_source, pages, want_suggestion, ifnull(owner_id, 0)`).
+		Scan(&j.ID, &j.FilePath, &j.Mime, &j.ForceOCR, &j.OCRLang, &j.Title, &j.TextSource, &j.Pages, &j.WantSuggestion, &j.OwnerID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
