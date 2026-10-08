@@ -49,7 +49,7 @@ func (s *Server) spool(r io.Reader, name string) (*spooled, error) {
 	f := &spooled{path: tmp.Name(), name: name}
 	h := sha256.New()
 	var head bytes.Buffer
-	n, err := io.Copy(io.MultiWriter(tmp, h, &limitedBuffer{&head, 512}), io.LimitReader(r, maxFile+1))
+	n, err := io.Copy(io.MultiWriter(tmp, h, &limitedBuffer{&head, pdfJunkMax}), io.LimitReader(r, maxFile+1))
 	if cerr := tmp.Close(); err == nil {
 		err = cerr
 	}
@@ -76,6 +76,16 @@ func (l *limitedBuffer) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+// pdfJunkMax is how far into a file the PDF header may start. The income
+// tax portal's downloads have a Java header before it; Acrobat and poppler
+// look for "%PDF-" in the first 1024 bytes, so Docvault does too.
+const pdfJunkMax = 1024
+
+// pdfStart is where the PDF header is in head, or -1.
+func pdfStart(head []byte) int {
+	return bytes.Index(head[:min(len(head), pdfJunkMax)], []byte("%PDF-"))
+}
+
 // sniff names the file type from its first bytes: PDF, JPEG, PNG or HEIC,
 // or "" for anything else.
 func sniff(head []byte) string {
@@ -88,6 +98,9 @@ func sniff(head []byte) string {
 	switch t := http.DetectContentType(head); t {
 	case "application/pdf", "image/jpeg", "image/png":
 		return t
+	}
+	if pdfStart(head) > 0 {
+		return "application/pdf"
 	}
 	return ""
 }

@@ -525,3 +525,29 @@ func TestNoFoyerToken(t *testing.T) {
 	x.json(x.do("GET", "/api/foyer/widget", "", ""), 401, nil)
 	x.json(x.do("GET", "/api/foyer/widget", "", "", "Authorization", "Bearer "), 401, nil)
 }
+
+// The income tax portal's PDFs start with a Java header: they're accepted,
+// viewers get the PDF from its header on, and the original is unchanged.
+func TestPDFAfterJunk(t *testing.T) {
+	x := newServer(t)
+	me, _ := x.setup()
+	junk := append([]byte("\xac\xed\x00\x05ur\x00\x13[Ljava.lang.Object;"), make([]byte, 200)...)
+	file := append(junk, pdfBytes("itr")...)
+	var res struct {
+		Results []ingestResult `json:"results"`
+	}
+	x.json(x.upload(me, "application/json", part{"file", "ITR ack.pdf", file}), 200, &res)
+	if len(res.Results) != 1 || res.Results[0].Status != "added" {
+		t.Fatalf("upload: %+v", res)
+	}
+	id := itoa(res.Results[0].Document.ID)
+	if got := x.do("GET", "/api/documents/"+id+"/file", "", me).Body.Bytes(); !bytes.Equal(got, pdfBytes("itr")) {
+		t.Fatalf("viewer got %q", got)
+	}
+	if got := x.do("GET", "/api/documents/"+id+"/original", "", me).Body.Bytes(); !bytes.Equal(got, file) {
+		t.Fatal("the original changed")
+	}
+	if sniff([]byte("hello %PDF-1.4")) != "application/pdf" || sniff([]byte("hello")) != "" {
+		t.Fatal("sniff")
+	}
+}

@@ -544,7 +544,9 @@ func downloadName(title, ext string) string {
 	return safeName(title+ext, ext)
 }
 
-func serveFile(w http.ResponseWriter, r *http.Request, path, mime, name string, attachment bool) {
+// serveFile sends a file. With asPDF, a PDF is sent from its header on, in
+// case there's junk before it (see pdfJunkMax); otherwise byte for byte.
+func serveFile(w http.ResponseWriter, r *http.Request, path, mime, name string, attachment, asPDF bool) {
 	f, err := os.Open(path)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "the file isn't there")
@@ -566,7 +568,15 @@ func serveFile(w http.ResponseWriter, r *http.Request, path, mime, name string, 
 	h.Set("Content-Type", mime)
 	h.Set("Content-Disposition", disposition+"; filename*=UTF-8''"+url.PathEscape(name))
 	h.Set("Cache-Control", "private, no-cache")
-	http.ServeContent(w, r, "", info.ModTime(), f)
+	var content io.ReadSeeker = f
+	if asPDF && mime == "application/pdf" {
+		head := make([]byte, pdfJunkMax)
+		n, _ := f.ReadAt(head, 0)
+		if at := pdfStart(head[:n]); at > 0 {
+			content = io.NewSectionReader(f, int64(at), info.Size()-int64(at))
+		}
+	}
+	http.ServeContent(w, r, "", info.ModTime(), content)
 }
 
 // documentFile serves the document as a PDF: the original, or the PDF
@@ -580,7 +590,7 @@ func (s *Server) documentFile(w http.ResponseWriter, r *http.Request) {
 	if process.IsImage(d.Mime) {
 		pdf := s.Processor.CachePDF(d.ID)
 		if _, err := os.Stat(pdf); err == nil {
-			serveFile(w, r, pdf, "application/pdf", downloadName(d.Title, ".pdf"), download)
+			serveFile(w, r, pdf, "application/pdf", downloadName(d.Title, ".pdf"), download, true)
 			return
 		}
 		if d.Mime == "image/heic" {
@@ -588,13 +598,13 @@ func (s *Server) documentFile(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	serveFile(w, r, filepath.Join(s.dir("files"), d.FilePath), d.Mime, downloadName(d.Title, extFor[d.Mime]), download)
+	serveFile(w, r, filepath.Join(s.dir("files"), d.FilePath), d.Mime, downloadName(d.Title, extFor[d.Mime]), download, true)
 }
 
 // documentOriginal serves the uploaded file byte for byte.
 func (s *Server) documentOriginal(w http.ResponseWriter, r *http.Request) {
 	if d, ok := s.document(w, r); ok {
-		serveFile(w, r, filepath.Join(s.dir("files"), d.FilePath), d.Mime, d.FileName, true)
+		serveFile(w, r, filepath.Join(s.dir("files"), d.FilePath), d.Mime, d.FileName, true, false)
 	}
 }
 
