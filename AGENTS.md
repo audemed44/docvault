@@ -20,12 +20,14 @@ originals in `/data/files/<id>/`, derived files in `/data/cache/<id>/`.
 - `internal/store`: schema, migrations (append-only, tracked in
   `PRAGMA user_version`) and queries. Documents with `owner_id` NULL are in
   the Family space; the extracted text lives only in the FTS5 table.
-- `internal/process`: the background workers (`DOCVAULT_WORKERS`, one
-  document each, claimed atomically):
-  photo → PDF (`pdf.go`, EXIF orientation applied by the page transform),
-  page count, thumbnail, text layer or Tesseract OCR, then the optional
-  classifier (`classify.go`: the input and Sanitize; `llm.go`: chat
-  models through an OpenAI-compatible API).
+- `internal/process`: the background workers, in two pools that each
+  claim documents atomically. Readers (Settings → Read at once, default
+  `DOCVAULT_WORKERS`): photo → PDF (`pdf.go`, EXIF orientation applied by
+  the page transform), page count, thumbnail, text layer or Tesseract OCR.
+  A document that wants a suggestion is then handed (`read_done`) to the
+  suggestion workers (Settings → At once, default 8, up to 32), which run
+  the optional classifier (`classify.go`: the input and Sanitize;
+  `llm.go`: chat models through an OpenAI-compatible API).
 - `internal/mask`: hides identifiers in text before it goes to a
   classifier. Anything new that sends document text off the server must
   go through it.

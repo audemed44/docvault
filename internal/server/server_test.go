@@ -412,6 +412,15 @@ func TestSuggestions(t *testing.T) {
 	if len(set.People) != 1 || len(set.People[0].Aliases) != 1 || len(set.MaskWords) != 1 || set.ClassifyFrom != "auto" || set.SuggestNew != "ask" {
 		t.Fatalf("settings %+v", set)
 	}
+	if set.OCRWorkers != 1 || set.SuggestWorkers != 8 { // the defaults
+		t.Fatalf("workers %d, %d", set.OCRWorkers, set.SuggestWorkers)
+	}
+	x.json(x.do("PUT", "/api/settings", `{"ocr_langs":"eng","ocr_workers":9}`, me), 400, nil)
+	x.json(x.do("PUT", "/api/settings", `{"ocr_langs":"eng","suggest_workers":33}`, me), 400, nil)
+	x.json(x.do("PUT", "/api/settings", `{"ocr_langs":"eng","ocr_workers":2,"suggest_workers":20}`, me), 200, &set)
+	if set.OCRWorkers != 2 || set.SuggestWorkers != 20 {
+		t.Fatalf("workers %d, %d", set.OCRWorkers, set.SuggestWorkers)
+	}
 
 	// The tag list.
 	var vocab []store.VocabTag
@@ -483,17 +492,17 @@ func TestSuggestions(t *testing.T) {
 		t.Fatalf("queued %v", queued)
 	}
 	for range 2 {
-		job, _ := x.s.Store.ClaimJob(ctx)
-		if !job.WantSuggestion {
-			t.Fatal("not marked as asked for")
+		job, _ := x.s.Store.ClaimSuggestion(ctx) // read already: straight to the suggestion workers
+		if !job.WantSuggestion || job.Text != "text" {
+			t.Fatalf("job %+v", job)
 		}
-		x.s.Store.FinishJob(ctx, job.ID, store.JobResult{Pages: 1, TextSource: "pdf", Text: "text"})
+		x.s.Store.FinishSuggestion(ctx, job.ID, store.JobResult{Pages: 1, TextSource: "pdf", Text: "text"})
 	}
 	x.json(x.do("POST", "/api/suggestions/request", `{"ids":[2, 999]}`, me), 200, &queued)
 	if queued["queued"] != 1 {
 		t.Fatalf("queued selected %v", queued)
 	}
-	if job, _ := x.s.Store.ClaimJob(ctx); job == nil || job.ID != 2 {
+	if job, _ := x.s.Store.ClaimSuggestion(ctx); job == nil || job.ID != 2 {
 		t.Fatalf("queued %+v", job)
 	}
 	x.json(x.do("GET", "/api/settings", "", me), 200, &set)

@@ -141,6 +141,7 @@ export function MaskingSection(props: {
   const [words, setWords] = useState(props.settings.mask_words.join("\n"));
   const [from, setFrom] = useState(props.settings.classify_from || "auto");
   const [when, setWhen] = useState(props.settings.suggest_new || "ask");
+  const [atOnce, setAtOnce] = useState(String(props.settings.suggest_workers));
   const [sample, setSample] = useState("");
   const [masked, setMasked] = useState<string | null>(null);
   const save = useAction();
@@ -153,7 +154,8 @@ export function MaskingSection(props: {
     JSON.stringify(edited) !== JSON.stringify(props.settings.people) ||
     JSON.stringify(splitList(words)) !== JSON.stringify(props.settings.mask_words) ||
     from !== props.settings.classify_from ||
-    when !== props.settings.suggest_new;
+    when !== props.settings.suggest_new ||
+    atOnce !== String(props.settings.suggest_workers);
   const c = props.settings.classifier;
 
   return (
@@ -218,6 +220,19 @@ export function MaskingSection(props: {
             <option value="title">Only the document's name</option>
             <option value="text">The name and the text</option>
           </select>
+        </Field>
+        <Field
+          label="At once"
+          hint="How many documents are sent to the model at the same time (1–32). More finishes a big batch sooner; too many and the provider slows you down."
+        >
+          <input
+            class="input input-number"
+            type="number"
+            min={1}
+            max={32}
+            value={atOnce}
+            onInput={(e) => setAtOnce(e.currentTarget.value)}
+          />
         </Field>
         <Field
           label="People"
@@ -296,6 +311,7 @@ export function MaskingSection(props: {
                       mask_words: splitList(words),
                       classify_from: from,
                       suggest_new: when,
+                      suggest_workers: Number(atOnce) || 0,
                     }),
                   );
                 })

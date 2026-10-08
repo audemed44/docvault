@@ -2,6 +2,7 @@ package server
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"slices"
 	"strings"
@@ -73,6 +74,7 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 	if langs == nil {
 		langs = []string{}
 	}
+	set.OCRWorkers, set.SuggestWorkers = s.Processor.Limits(set)
 	info := settingsInfo{Settings: set, Languages: langs}
 	if c := s.Processor.Classifier; c != nil {
 		info.Classifier = c.Name()
@@ -140,10 +142,20 @@ func (s *Server) saveSettings(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "classify_from must be auto, title or text")
 		return
 	}
+	// 0 keeps the default.
+	if set.OCRWorkers < 0 || set.OCRWorkers > process.MaxOCRWorkers {
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("documents read at once: 1–%d", process.MaxOCRWorkers))
+		return
+	}
+	if set.SuggestWorkers < 0 || set.SuggestWorkers > process.MaxSuggestWorkers {
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("suggestions at once: 1–%d", process.MaxSuggestWorkers))
+		return
+	}
 	if err := s.Store.SaveSettings(r.Context(), set); err != nil {
 		storeError(w, err)
 		return
 	}
+	s.Processor.Wake() // the worker limits may have changed
 	s.getSettings(w, r)
 }
 

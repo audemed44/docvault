@@ -122,6 +122,10 @@ export interface Settings {
   classify_from: "auto" | "title" | "text";
   /** "ask": suggestions only when asked for; "auto": every document once it's read. */
   suggest_new: "ask" | "auto";
+  /** Documents read (OCR'd) at once, 1–8. */
+  ocr_workers: number;
+  /** Suggestions asked for at once, 1–32. */
+  suggest_workers: number;
   languages: string[];
   /** "llm:<model>", "hook", or "" when suggestions are off. */
   classifier: string;

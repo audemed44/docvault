@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -154,7 +155,7 @@ func addFile(t *testing.T, p *Processor, st *store.Store, u *store.User, name, m
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.FinishJob(ctx, job.ID, p.process(ctx, job)); err != nil {
+	if err := st.FinishJob(ctx, job.ID, p.read(ctx, job)); err != nil {
 		t.Fatal(err)
 	}
 	got, err := st.Document(ctx, u.ID, d.ID)
@@ -210,13 +211,12 @@ func TestOCR(t *testing.T) {
 	}
 }
 
-// Several workers share the queue: every document is processed once.
-func TestWorkers(t *testing.T) {
-	p, st, u := setup(t)
-	p.Workers = 3
+// queueDocs adds n text PDFs to the queue.
+func queueDocs(t *testing.T, p *Processor, st *store.Store, u *store.User, n int) []int64 {
+	t.Helper()
 	ctx := context.Background()
 	var ids []int64
-	for i := range 9 {
+	for i := range n {
 		name := fmt.Sprintf("doc%d.pdf", i)
 		d := &store.Document{OwnerID: u.ID, Title: name, DocDate: "2024-01-01", FileName: name, Mime: "application/pdf", SHA256: name}
 		if err := st.CreateDocument(ctx, d, u.ID); err != nil {
@@ -227,9 +227,20 @@ func TestWorkers(t *testing.T) {
 		st.SetFilePath(ctx, d.ID, filepath.Join(fmt.Sprint(d.ID), name))
 		ids = append(ids, d.ID)
 	}
+	return ids
+}
+
+// runUntilDone starts the processor and waits until the documents are done.
+func runUntilDone(t *testing.T, p *Processor, st *store.Store, u *store.User, ids []int64, during func()) {
+	t.Helper()
+	ctx := context.Background()
 	run, stop := context.WithCancel(ctx)
 	done := make(chan struct{})
 	go func() { p.Run(run); close(done) }()
+	defer func() { stop(); <-done }()
+	if during != nil {
+		during()
+	}
 	deadline := time.Now().Add(30 * time.Second)
 	for _, id := range ids {
 		for {
@@ -246,8 +257,75 @@ func TestWorkers(t *testing.T) {
 			time.Sleep(20 * time.Millisecond)
 		}
 	}
-	stop()
-	<-done
+}
+
+// Several workers share the queue: every document is processed once.
+func TestWorkers(t *testing.T) {
+	p, st, u := setup(t)
+	p.Workers = 3
+	runUntilDone(t, p, st, u, queueDocs(t, p, st, u, 9), nil)
+}
+
+// gateClassifier holds every call until release is closed, counting how
+// many are waiting at once.
+type gateClassifier struct {
+	release       chan struct{}
+	now, max, all atomic.Int32
+}
+
+func (g *gateClassifier) Name() string { return "gate" }
+func (g *gateClassifier) Classify(ctx context.Context, in Input) (*store.Suggest, error) {
+	n := g.now.Add(1)
+	defer g.now.Add(-1)
+	g.all.Add(1)
+	for {
+		m := g.max.Load()
+		if n <= m || g.max.CompareAndSwap(m, n) {
+			break
+		}
+	}
+	select {
+	case <-g.release:
+	case <-ctx.Done():
+	}
+	return &store.Suggest{Category: "Tax"}, nil
+}
+
+// Suggestions have their own workers, as many at once as the settings say,
+// while documents are read one at a time.
+func TestSuggestionWorkers(t *testing.T) {
+	p, st, u := setup(t)
+	ctx := context.Background()
+	st.SaveSettings(ctx, store.Settings{OCRLangs: "eng", ClassifyFrom: "text", SuggestNew: "auto", SuggestWorkers: 3})
+	gate := &gateClassifier{release: make(chan struct{})}
+	p.Classifier = gate
+	ids := queueDocs(t, p, st, u, 7)
+	runUntilDone(t, p, st, u, ids, func() {
+		deadline := time.Now().Add(30 * time.Second)
+		for gate.now.Load() < 3 {
+			if time.Now().After(deadline) {
+				t.Fatalf("%d suggestions at once", gate.now.Load())
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		time.Sleep(200 * time.Millisecond) // time to go over, if it would
+		close(gate.release)
+	})
+	if gate.max.Load() != 3 || gate.all.Load() != 7 {
+		t.Fatalf("%d at once, %d in all", gate.max.Load(), gate.all.Load())
+	}
+	for _, id := range ids {
+		d, _ := st.Document(ctx, u.ID, id)
+		if d.Classified.IsZero() || d.Suggestion == nil || d.Suggestion.Category != "Tax" {
+			t.Fatalf("document %d: %+v", id, d)
+		}
+	}
+	if r, s := p.Limits(store.Settings{}); r != 1 || s != DefaultSuggestWorkers {
+		t.Fatalf("default limits %d, %d", r, s)
+	}
+	if r, s := p.Limits(store.Settings{OCRWorkers: 50, SuggestWorkers: 50}); r != MaxOCRWorkers || s != MaxSuggestWorkers {
+		t.Fatalf("capped limits %d, %d", r, s)
+	}
 }
 
 // Pages that say they're huge (photos at 72 dpi) are rendered smaller.
