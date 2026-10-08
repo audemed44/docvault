@@ -433,7 +433,7 @@ func (s *Server) suggest(d *store.Document) {
 			d.CategoryID = id
 		}
 	}
-	d.Tags = append(d.Tags, sg.Tags...)
+	d.Tags = append(append(d.Tags, sg.Tags...), sg.NewTags...)
 }
 
 // selection is the documents a bulk action is for: the IDs in a JSON body

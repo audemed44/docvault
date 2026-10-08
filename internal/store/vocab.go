@@ -97,3 +97,27 @@ func (s *Store) SaveTagVocab(ctx context.Context, tags []VocabTag) error {
 	}
 	return tx.Commit()
 }
+
+// UsedTags are the tags on documents a user can see, most used first: the
+// classifier reuses them instead of inventing variants. userID 0 means the
+// Family space only.
+func (s *Store) UsedTags(ctx context.Context, userID int64) ([]string, error) {
+	counts, err := s.counts(ctx, `SELECT t.tag, count(*) FROM document_tags t JOIN documents d ON d.id = t.document_id
+		WHERE `+visible+` GROUP BY t.tag ORDER BY count(*) DESC, t.tag LIMIT 300`, userID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, len(counts))
+	for i, c := range counts {
+		out[i] = c.Name
+	}
+	return out, nil
+}
+
+// UnlistedTags are tags on documents the user can see that aren't in the
+// vocabulary, for adding to it.
+func (s *Store) UnlistedTags(ctx context.Context, userID int64) ([]Count, error) {
+	return s.counts(ctx, `SELECT t.tag, count(*) FROM document_tags t JOIN documents d ON d.id = t.document_id
+		WHERE `+visible+` AND NOT EXISTS (SELECT 1 FROM tag_vocab v WHERE v.name = t.tag)
+		GROUP BY t.tag ORDER BY count(*) DESC, t.tag LIMIT 200`, userID)
+}

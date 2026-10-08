@@ -23,6 +23,8 @@ export interface Suggestion {
   title?: string;
   category?: string;
   tags?: string[];
+  /** Proposed tags that aren't on the tag list. */
+  new_tags?: string[];
   doc_date?: string;
   expires?: string;
 }

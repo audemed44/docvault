@@ -108,6 +108,16 @@ func (p *Processor) Thumb(id int64) string {
 func IsImage(mime string) bool { return strings.HasPrefix(mime, "image/") }
 
 func (p *Processor) process(ctx context.Context, job *store.Job) store.JobResult {
+	res := p.read(ctx, job)
+	// Even a file that couldn't be read can be classified from its name.
+	if p.wantsSuggestion(ctx, job) {
+		p.classify(ctx, job, &res)
+	}
+	return res
+}
+
+// read makes the PDF, thumbnail and text.
+func (p *Processor) read(ctx context.Context, job *store.Job) store.JobResult {
 	var res store.JobResult
 	dir := filepath.Join(p.Cache, strconv.FormatInt(job.ID, 10))
 	if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -169,10 +179,6 @@ func (p *Processor) process(ctx context.Context, job *store.Job) store.JobResult
 		} else {
 			res.Text, res.TextSource, res.OCRLang = clip(text), "ocr", lang
 		}
-	}
-
-	if p.wantsSuggestion(ctx, job) {
-		p.classify(ctx, job, &res)
 	}
 	return res
 }

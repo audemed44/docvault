@@ -149,6 +149,8 @@ function SuggestionNote(props: { doc: Doc; onDone: (d: Doc) => void }) {
   if (s.title && s.title !== doc.title) rows.push(["Title", s.title]);
   if (s.category && s.category !== doc.category) rows.push(["Category", s.category]);
   if (s.tags?.length) rows.push(["Tags", s.tags.join(", ")]);
+  if (s.new_tags?.length)
+    rows.push(["New tags", `${s.new_tags.join(", ")} (not on your tag list)`]);
   if (s.doc_date && s.doc_date !== doc.doc_date) rows.push(["Date", formatDate(s.doc_date)]);
   if (s.expires && s.expires !== doc.expires) rows.push(["Expires", formatDate(s.expires)]);
   return (

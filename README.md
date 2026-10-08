@@ -125,9 +125,16 @@ Nothing changes until someone applies it.
   unlabelled names and addresses, and what a document is about, still go
   through. **What the classifier saw** on each document shows exactly what
   was sent, and Settings has a box to try the masking on any text.
-- **Only your categories and tags** can come back: the request carries a
-  JSON schema listing them, and anything else is dropped (Settings → Tags
-  manages the list; people are tags too).
+- **Your categories and tags** come back as they are: the request carries
+  a JSON schema listing them, and anything else in those fields is dropped
+  (Settings → Tags manages the list; people are tags too).
+- **New tags** are proposed separately (`new_tags`, at most 2, like
+  `airline-ticket`) when nothing on the list fits. The model is shown the
+  tags already used on documents so it reuses them instead of making
+  variants. They show as "New tags" on the suggestion and are added with
+  it; Settings → Tags lists tags in use that aren't on the list, to add.
+- A document that couldn't be read (a broken or password-protected PDF)
+  can still get a suggestion from its name.
 - On OpenRouter, requests ask for providers that neither keep nor train
   on prompts (`provider: {data_collection: "deny", zdr: true}`). A local
   model (`DOCVAULT_LLM_URL=http://llama:8080/v1`) keeps everything on
@@ -145,7 +152,8 @@ Nothing changes until someone applies it.
   "text": "INCOME TAX DEPARTMENT … [pan] … Name: [person:1] …",
   "categories": [{ "name": "ID", "tags": ["aadhaar", "pan", "…"] }, "…"],
   "tags": ["aadhaar", "pan", "…", "[person:1]", "[person:2]"],
-  "people": ["[person:1]", "[person:2]"]
+  "people": ["[person:1]", "[person:2]"],
+  "used_tags": ["airline-ticket", "…"]
 }
 ```
 
@@ -154,7 +162,7 @@ tags):
 
 ```json
 { "title": "PAN card - [person:1]", "category": "ID", "tags": ["pan", "[person:1]"],
-  "doc_date": "2021-03-15", "expires": "" }
+  "new_tags": [], "doc_date": "2021-03-15", "expires": "" }
 ```
 
 ## Foyer

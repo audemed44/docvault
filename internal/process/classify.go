@@ -39,6 +39,9 @@ type Input struct {
 	// People are the family's placeholders, "[person:1]" and on: the names
 	// themselves are never sent.
 	People []string `json:"people"`
+	// UsedTags are tags already on documents but not on the list, to reuse
+	// when proposing new ones.
+	UsedTags []string `json:"used_tags"`
 }
 
 type CategoryTags struct {
@@ -69,7 +72,7 @@ func buildInput(ctx context.Context, st *store.Store, job *store.Job, text strin
 		text = strings.ToValidUTF8(text[:maxClassifyText], "")
 	}
 	in := Input{DocumentID: job.ID, Title: mask.Title(job.Title, opts), Text: mask.Text(text, opts),
-		Categories: []CategoryTags{}, Tags: []string{}, People: []string{}}
+		Categories: []CategoryTags{}, Tags: []string{}, People: []string{}, UsedTags: []string{}}
 	byCat := map[int64][]string{}
 	for _, t := range vocab {
 		byCat[t.CategoryID] = append(byCat[t.CategoryID], t.Name)
@@ -84,6 +87,17 @@ func buildInput(ctx context.Context, st *store.Store, job *store.Job, text strin
 	for i := range set.People {
 		in.People = append(in.People, mask.Placeholder(i))
 		in.Tags = append(in.Tags, mask.Placeholder(i))
+	}
+	used, err := st.UsedTags(ctx, job.OwnerID)
+	if err != nil {
+		return Input{}, set, err
+	}
+	for _, t := range used {
+		listed := slices.ContainsFunc(in.Tags, func(v string) bool { return strings.EqualFold(v, t) }) ||
+			slices.ContainsFunc(set.People, func(p mask.Person) bool { return strings.EqualFold(p.Name, t) })
+		if !listed && len(in.UsedTags) < 100 {
+			in.UsedTags = append(in.UsedTags, t)
+		}
 	}
 	return in, set, nil
 }
@@ -137,6 +151,20 @@ func Sanitize(sg store.Suggest, in Input, people []mask.Person) *store.Suggest {
 			out.Tags = append(out.Tags, tag)
 		}
 	}
+	for _, t := range sg.NewTags {
+		t = newTag(t)
+		switch {
+		case t == "" || len(out.NewTags) >= 2:
+		case slices.ContainsFunc(in.Tags, func(v string) bool { return strings.EqualFold(v, t) }):
+			// on the list after all: an ordinary tag (people are never new)
+			if !strings.HasPrefix(t, "[") && !slices.Contains(out.Tags, t) && len(out.Tags) < 8 {
+				i := slices.IndexFunc(in.Tags, func(v string) bool { return strings.EqualFold(v, t) })
+				out.Tags = append(out.Tags, in.Tags[i])
+			}
+		case !slices.Contains(out.NewTags, t):
+			out.NewTags = append(out.NewTags, t)
+		}
+	}
 	if _, err := time.Parse(time.DateOnly, sg.DocDate); err == nil {
 		out.DocDate = sg.DocDate
 	}
@@ -147,6 +175,21 @@ func Sanitize(sg store.Suggest, in Input, people []mask.Person) *store.Suggest {
 		return nil
 	}
 	return out
+}
+
+var notTagChars = regexp.MustCompile(`[^a-z0-9]+`)
+
+// newTag tidies a proposed tag into lowercase words joined by hyphens
+// ("Airline Ticket" → "airline-ticket"); "" when it isn't usable.
+func newTag(t string) string {
+	if strings.Contains(t, "[") { // a placeholder: never a new tag
+		return ""
+	}
+	t = strings.Trim(notTagChars.ReplaceAllString(strings.ToLower(t), "-"), "-")
+	if len(t) < 2 || len(t) > 30 {
+		return ""
+	}
+	return t
 }
 
 // Hook is a classifier behind any URL (DOCVAULT_CLASSIFIER_URL): Docvault

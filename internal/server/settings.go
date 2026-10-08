@@ -3,6 +3,7 @@ package server
 import (
 	"errors"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/audemed44/docvault/internal/mask"
@@ -172,6 +173,27 @@ func (s *Server) listTagVocab(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, tags)
+}
+
+// unlistedTags are tags on documents that aren't on the tag list.
+func (s *Server) unlistedTags(w http.ResponseWriter, r *http.Request) {
+	tags, err := s.Store.UnlistedTags(r.Context(), currentUser(r).ID)
+	if err != nil {
+		storeError(w, err)
+		return
+	}
+	set, err := s.Store.Settings(r.Context())
+	if err != nil {
+		storeError(w, err)
+		return
+	}
+	out := []store.Count{}
+	for _, t := range tags {
+		if !slices.ContainsFunc(set.People, func(p mask.Person) bool { return strings.EqualFold(p.Name, t.Name) }) {
+			out = append(out, t)
+		}
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // saveTagVocab replaces the tags the classifier may suggest.

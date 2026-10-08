@@ -8,6 +8,7 @@ import { ErrorNote, Field, SectionHead, useAction } from "./ui";
 /** The tags the classifier may suggest, filed under categories. */
 export function TagsSection(props: { index: number }) {
   const vocab = useData(api.tagVocab);
+  const unlisted = useData(api.unlistedTags);
   const cats = useData(api.categories);
   const [list, setList] = useState<VocabTag[] | null>(null);
   const [adding, setAdding] = useState<Record<number, string>>({});
@@ -74,6 +75,29 @@ export function TagsSection(props: { index: number }) {
           );
         })}
       </div>
+      {!!unlisted.data?.length && (
+        <div class="unlisted">
+          <span class="eyebrow">Used on documents, not on the list</span>
+          <div class="chips">
+            {unlisted.data
+              .filter((u) => !tags.some((t) => t.name.toLowerCase() === u.name.toLowerCase()))
+              .map((u) => (
+                <button
+                  key={u.name}
+                  class="chip chip-button"
+                  title={`Add ${u.name} to the list`}
+                  onClick={() => setList([...tags, { name: u.name, category_id: 0 }])}
+                >
+                  <Plus size={10} /> {u.name} <span class="muted">{u.count}</span>
+                </button>
+              ))}
+          </div>
+          <span class="field-hint">
+            Suggestions' new tags, and tags typed by hand. Adding one puts it under “Any category”;
+            save to keep it.
+          </span>
+        </div>
+      )}
       {error && <ErrorNote>{error}</ErrorNote>}
       {list && (
         <div class="toolbar">
@@ -83,6 +107,7 @@ export function TagsSection(props: { index: number }) {
             onClick={() =>
               run(async () => {
                 vocab.setData(await api.saveTagVocab(list));
+                unlisted.reload();
                 setList(null);
               })
             }
