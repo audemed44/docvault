@@ -23,12 +23,72 @@ type Store struct {
 }
 
 const schema = `
-CREATE TABLE IF NOT EXISTS items (
+CREATE TABLE IF NOT EXISTS users (
+	id       INTEGER PRIMARY KEY AUTOINCREMENT,
+	username TEXT NOT NULL UNIQUE COLLATE NOCASE,
+	name     TEXT NOT NULL,
+	password TEXT NOT NULL,
+	admin    INTEGER NOT NULL DEFAULT 0,
+	created  INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS sessions (
+	hash    TEXT PRIMARY KEY,
+	user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	created INTEGER NOT NULL,
+	seen    INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS api_tokens (
 	id      INTEGER PRIMARY KEY AUTOINCREMENT,
-	title   TEXT NOT NULL,
-	note    TEXT NOT NULL DEFAULT '',
-	done    INTEGER NOT NULL DEFAULT 0,
-	created INTEGER NOT NULL
+	user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	name    TEXT NOT NULL,
+	hash    TEXT NOT NULL UNIQUE,
+	hint    TEXT NOT NULL,
+	created INTEGER NOT NULL,
+	used    INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS categories (
+	id       INTEGER PRIMARY KEY AUTOINCREMENT,
+	name     TEXT NOT NULL UNIQUE COLLATE NOCASE,
+	position INTEGER NOT NULL DEFAULT 0
+);
+-- owner_id NULL is the shared Family space; otherwise the owner's private
+-- library. file_path is the original under files/, kept byte for byte.
+CREATE TABLE IF NOT EXISTS documents (
+	id          INTEGER PRIMARY KEY AUTOINCREMENT,
+	owner_id    INTEGER REFERENCES users(id),
+	added_by    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+	title       TEXT NOT NULL,
+	category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
+	doc_date    TEXT NOT NULL,
+	expires     TEXT NOT NULL DEFAULT '',
+	notes       TEXT NOT NULL DEFAULT '',
+	file_name   TEXT NOT NULL,
+	file_path   TEXT NOT NULL,
+	mime        TEXT NOT NULL,
+	size        INTEGER NOT NULL,
+	sha256      TEXT NOT NULL,
+	pages       INTEGER NOT NULL DEFAULT 0,
+	status      TEXT NOT NULL DEFAULT 'pending',
+	error       TEXT NOT NULL DEFAULT '',
+	text_source TEXT NOT NULL DEFAULT '',
+	ocr_lang    TEXT NOT NULL DEFAULT '',
+	force_ocr   INTEGER NOT NULL DEFAULT 0,
+	suggestion  TEXT NOT NULL DEFAULT '',
+	created     INTEGER NOT NULL,
+	updated     INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS documents_space_sha ON documents (ifnull(owner_id, 0), sha256);
+CREATE INDEX IF NOT EXISTS documents_status ON documents (status);
+CREATE INDEX IF NOT EXISTS documents_date ON documents (doc_date);
+CREATE TABLE IF NOT EXISTS document_tags (
+	document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+	tag         TEXT NOT NULL COLLATE NOCASE,
+	PRIMARY KEY (document_id, tag)
+);
+-- Search index, one row per document (rowid = documents.id). body is the
+-- extracted text, which lives only here.
+CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5 (
+	title, notes, tags, body, tokenize = 'unicode61 remove_diacritics 2'
 );
 CREATE TABLE IF NOT EXISTS settings (
 	key   TEXT PRIMARY KEY,
@@ -36,11 +96,12 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 `
 
+// DefaultCategories are created with a new database; they're editable.
+var DefaultCategories = []string{"ID", "Property", "Medical", "Insurance", "Tax", "Vehicle", "Education", "Bills", "Other"}
+
 // migrations run after the schema, once each: append, never edit or
 // reorder. migrations[i] moves the database to user_version i+1.
-var migrations = []string{
-	// `ALTER TABLE items ADD COLUMN due INTEGER NOT NULL DEFAULT 0`,
-}
+var migrations = []string{}
 
 // Open opens (or creates) the database.
 func Open(path string) (*Store, error) {
@@ -61,7 +122,12 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("database migration: %w", err)
 	}
-	return &Store{db: db}, nil
+	s := &Store{db: db}
+	if err := s.seedCategories(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("database: %w", err)
+	}
+	return s, nil
 }
 
 func migrate(db *sql.DB) error {
@@ -128,4 +194,41 @@ func (s *Store) Put(ctx context.Context, key string, v any) error {
 		`INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
 		key, string(b))
 	return err
+}
+
+// Settings are the app-wide settings an admin can change.
+type Settings struct {
+	// OCRLangs are the Tesseract languages for documents without a text
+	// layer, joined with "+".
+	OCRLangs string `json:"ocr_langs"`
+	// ShortcutURL is the iCloud link to the "Save to Vault" Shortcut.
+	ShortcutURL string `json:"shortcut_url"`
+}
+
+func (s *Store) Settings(ctx context.Context) (Settings, error) {
+	set := Settings{OCRLangs: "eng+hin"}
+	err := s.Get(ctx, "settings", &set)
+	return set, err
+}
+
+func (s *Store) SaveSettings(ctx context.Context, set Settings) error {
+	return s.Put(ctx, "settings", set)
+}
+
+// TagNames are every tag in use, for the classifier to reuse.
+func (s *Store) TagNames(ctx context.Context) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT tag FROM document_tags GROUP BY tag ORDER BY count(*) DESC LIMIT 300`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []string{}
+	for rows.Next() {
+		var t string
+		if err := rows.Scan(&t); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
 }

@@ -7,43 +7,91 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"os"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 
+	"github.com/audemed44/docvault/internal/process"
 	"github.com/audemed44/docvault/internal/store"
 )
 
 type Options struct {
-	Store    *store.Store
-	Token    string
+	Store     *store.Store
+	Processor *process.Processor
+	Token     string // DOCVAULT_TOKEN: first-run setup and Foyer
+	// DataDir holds files/ (the originals), cache/ (thumbnails and photo
+	// PDFs), import/ (folders to bulk import) and tmp/ (uploads in flight).
+	DataDir  string
 	Web      fs.FS
 	FoyerURL string // Foyer, the homelab's start page, linked from the header
 }
 
 type Server struct {
 	Options
-	session string // cookie value for a signed-in browser
+	imports imports
 }
 
-func New(o Options) *Server {
-	return &Server{Options: o, session: sessionValue(o.Token)}
+func New(o Options) (*Server, error) {
+	s := &Server{Options: o, imports: imports{reports: map[int64]*importReport{}}}
+	for _, d := range []string{"files", "cache", "import", "tmp"} {
+		if err := os.MkdirAll(s.dir(d), 0o755); err != nil {
+			return nil, err
+		}
+	}
+	// Uploads cut off by a restart.
+	if old, _ := filepath.Glob(filepath.Join(s.dir("tmp"), "upload-*")); old != nil {
+		for _, f := range old {
+			os.Remove(f)
+		}
+	}
+	return s, nil
 }
+
+func (s *Server) dir(name string) string { return filepath.Join(s.DataDir, name) }
 
 func (s *Server) Handler() http.Handler {
 	api := http.NewServeMux()
-	api.HandleFunc("GET /api/items", s.listItems)
-	api.HandleFunc("POST /api/items", s.saveItem)
-	api.HandleFunc("PUT /api/items/{id}", s.saveItem)
-	api.HandleFunc("DELETE /api/items/{id}", s.deleteItem)
+	api.HandleFunc("PUT /api/me", sessionOnly(s.updateMe))
+	api.HandleFunc("GET /api/tokens", sessionOnly(s.listTokens))
+	api.HandleFunc("POST /api/tokens", sessionOnly(s.createToken))
+	api.HandleFunc("DELETE /api/tokens/{id}", sessionOnly(s.deleteToken))
+	api.HandleFunc("GET /api/users", adminOnly(s.listUsers))
+	api.HandleFunc("POST /api/users", adminOnly(s.saveUser))
+	api.HandleFunc("PUT /api/users/{id}", adminOnly(s.saveUser))
+	api.HandleFunc("DELETE /api/users/{id}", adminOnly(s.deleteUser))
 
-	api.HandleFunc("GET /api/foyer/widget", s.foyerWidget)
+	api.HandleFunc("GET /api/categories", s.listCategories)
+	api.HandleFunc("PUT /api/categories", adminOnly(s.saveCategories))
+	api.HandleFunc("GET /api/settings", s.getSettings)
+	api.HandleFunc("PUT /api/settings", adminOnly(s.saveSettings))
+
+	api.HandleFunc("POST /api/upload", s.upload)
+	api.HandleFunc("GET /api/import", s.importStatus)
+	api.HandleFunc("POST /api/import", sessionOnly(s.startImport))
+	api.HandleFunc("GET /api/facets", s.facets)
+	api.HandleFunc("GET /api/documents", s.listDocuments)
+	api.HandleFunc("GET /api/documents/{id}", s.getDocument)
+	api.HandleFunc("PUT /api/documents/{id}", s.updateDocument)
+	api.HandleFunc("DELETE /api/documents/{id}", s.deleteDocument)
+	api.HandleFunc("GET /api/documents/{id}/text", s.documentText)
+	api.HandleFunc("GET /api/documents/{id}/file", s.documentFile)
+	api.HandleFunc("GET /api/documents/{id}/original", s.documentOriginal)
+	api.HandleFunc("GET /api/documents/{id}/thumb", s.documentThumb)
+	api.HandleFunc("POST /api/documents/{id}/reprocess", s.reprocess)
+	api.HandleFunc("POST /api/documents/{id}/suggestion", s.applySuggestion)
+	api.HandleFunc("DELETE /api/documents/{id}/suggestion", s.dismissSuggestion)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/session", s.getSession)
 	mux.HandleFunc("POST /api/session", s.login)
 	mux.HandleFunc("DELETE /api/session", s.logout)
-	mux.Handle("/api/", s.requireAuth(api))
+	mux.HandleFunc("POST /api/setup", s.setup)
+	mux.HandleFunc("GET /api/foyer/widget", s.requireSystem(s.foyerWidget))
+	mux.HandleFunc("GET /api/foyer/thumb/{id}", s.requireSystem(s.foyerThumb))
+	mux.HandleFunc("POST /api/foyer/upload", s.requireSystem(s.foyerUpload))
+	mux.Handle("/api/", s.requireUser(api))
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
@@ -69,6 +117,10 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 func storeError(w http.ResponseWriter, err error) {
 	if errors.Is(err, store.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if errors.Is(err, store.ErrConflict) {
+		writeError(w, http.StatusConflict, "already exists")
 		return
 	}
 	slog.Error("request failed", "err", err)
@@ -134,7 +186,7 @@ func securityHeaders(next http.Handler) http.Handler {
 		h.Set("Referrer-Policy", "no-referrer")
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("Content-Security-Policy",
-			"default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'")
+			"default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; frame-ancestors 'none'")
 		next.ServeHTTP(w, r)
 	})
 }
