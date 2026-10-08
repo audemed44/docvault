@@ -20,7 +20,8 @@ originals in `/data/files/<id>/`, derived files in `/data/cache/<id>/`.
 - `internal/store`: schema, migrations (append-only, tracked in
   `PRAGMA user_version`) and queries. Documents with `owner_id` NULL are in
   the Family space; the extracted text lives only in the FTS5 table.
-- `internal/process`: the background worker (one document at a time):
+- `internal/process`: the background workers (`DOCVAULT_WORKERS`, one
+  document each, claimed atomically):
   photo → PDF (`pdf.go`, EXIF orientation applied by the page transform),
   page count, thumbnail, text layer or Tesseract OCR, then the optional
   classifier (`classify.go`: the input and Sanitize; `llm.go`: chat
@@ -36,7 +37,8 @@ originals in `/data/files/<id>/`, derived files in `/data/cache/<id>/`.
 
 - **Low memory is a feature.** One static binary, `GOMEMLIMIT=32MiB`.
   poppler and tesseract run only as short child processes, one page at a
-  time; OCR at 300 dpi peaks around 460 MB, hence `mem_limit: 768m`.
+  time; OCR at 300 dpi (capped at 4200 px, `pageDPI`) peaks around 460 MB
+  per worker, hence `mem_limit: 768m` for one.
 - **Originals are never rewritten.** Thumbnails, photo PDFs and text are
   derived and can be rebuilt ("Run OCR again").
 - **Documents stay on the server.** The only thing that leaves is masked
