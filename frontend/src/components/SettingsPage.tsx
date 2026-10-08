@@ -406,7 +406,7 @@ function ProcessingSection(props: {
         </Field>
         <Field
           label="Read at once"
-          hint="Documents OCR'd at the same time (1–8). Each needs about 500 MB of the container's memory limit and a CPU core."
+          hint="Documents OCR'd at the same time (1–8). Each takes a CPU core and up to about 500 MB of memory while it runs."
         >
           <input
             class="input input-number"
