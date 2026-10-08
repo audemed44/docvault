@@ -34,6 +34,8 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+      - name: Processing tools
+        run: sudo apt-get update -q && sudo apt-get install -yq poppler-utils tesseract-ocr tesseract-ocr-hin
       - name: Placeholder frontend for go:embed
         run: mkdir -p web/dist && echo '<!doctype html>' > web/dist/index.html
       - name: Format
