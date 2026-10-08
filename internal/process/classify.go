@@ -68,7 +68,7 @@ func buildInput(ctx context.Context, st *store.Store, job *store.Job, text strin
 	if len(text) > maxClassifyText {
 		text = strings.ToValidUTF8(text[:maxClassifyText], "")
 	}
-	in := Input{DocumentID: job.ID, Title: mask.Text(job.Title, opts), Text: mask.Text(text, opts),
+	in := Input{DocumentID: job.ID, Title: mask.Title(job.Title, opts), Text: mask.Text(text, opts),
 		Categories: []CategoryTags{}, Tags: []string{}, People: []string{}}
 	byCat := map[int64][]string{}
 	for _, t := range vocab {
