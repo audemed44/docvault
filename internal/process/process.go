@@ -122,12 +122,36 @@ func (p *Processor) Thumb(id int64) string {
 func IsImage(mime string) bool { return strings.HasPrefix(mime, "image/") }
 
 func (p *Processor) process(ctx context.Context, job *store.Job) store.JobResult {
-	res := p.read(ctx, job)
+	var res store.JobResult
+	if p.readBefore(job) {
+		// Only a suggestion was asked for: keep what was read last time.
+		res = store.JobResult{Pages: job.Pages, Text: job.Text, TextSource: job.TextSource, OCRLang: job.OCRLang}
+	} else {
+		res = p.read(ctx, job)
+	}
 	// Even a file that couldn't be read can be classified from its name.
 	if p.wantsSuggestion(ctx, job) {
 		p.classify(ctx, job, &res)
 	}
 	return res
+}
+
+// readBefore says a document queued only for a suggestion was read
+// already: it has its text and thumbnail (and a photo its PDF). Uploads and
+// Run OCR again are read in full.
+func (p *Processor) readBefore(job *store.Job) bool {
+	if !job.WantSuggestion || job.ForceOCR || job.TextSource == "" || job.Pages == 0 {
+		return false
+	}
+	if _, err := os.Stat(p.Thumb(job.ID)); err != nil {
+		return false
+	}
+	if IsImage(job.Mime) {
+		if _, err := os.Stat(p.CachePDF(job.ID)); err != nil {
+			return false
+		}
+	}
+	return true
 }
 
 // read makes the PDF, thumbnail and text.
