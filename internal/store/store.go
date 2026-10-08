@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/audemed44/docvault/internal/mask"
 	_ "modernc.org/sqlite" // pure Go, so the build stays static
 )
 
@@ -101,7 +102,22 @@ var DefaultCategories = []string{"ID", "Property", "Medical", "Insurance", "Tax"
 
 // migrations run after the schema, once each: append, never edit or
 // reorder. migrations[i] moves the database to user_version i+1.
-var migrations = []string{}
+var migrations = []string{
+	// 1: the tags the classifier may suggest, each under a category.
+	`CREATE TABLE tag_vocab (
+		id          INTEGER PRIMARY KEY AUTOINCREMENT,
+		name        TEXT NOT NULL UNIQUE COLLATE NOCASE,
+		category_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
+		position    INTEGER NOT NULL DEFAULT 0
+	)`,
+	// 2: what the classifier was sent (masked), when it last ran, and why
+	// it failed.
+	`ALTER TABLE documents ADD COLUMN classifier_input TEXT NOT NULL DEFAULT '';
+	ALTER TABLE documents ADD COLUMN classified INTEGER NOT NULL DEFAULT 0;
+	ALTER TABLE documents ADD COLUMN classify_error TEXT NOT NULL DEFAULT ''`,
+	// 3: a Banking category, and the starting tags.
+	seedVocab(),
+}
 
 // Open opens (or creates) the database.
 func Open(path string) (*Store, error) {
@@ -118,14 +134,15 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("database: %w", err)
 	}
-	if err := migrate(db); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("database migration: %w", err)
-	}
+	// Categories first: the migrations add to them.
 	s := &Store{db: db}
 	if err := s.seedCategories(); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("database: %w", err)
+	}
+	if err := migrate(db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("database migration: %w", err)
 	}
 	return s, nil
 }
@@ -203,11 +220,22 @@ type Settings struct {
 	OCRLangs string `json:"ocr_langs"`
 	// ShortcutURL is the iCloud link to the "Save to Vault" Shortcut.
 	ShortcutURL string `json:"shortcut_url"`
+	// People are masked as "[person:name]" for the classifier, which can
+	// tag documents with their names.
+	People []mask.Person `json:"people"`
+	// MaskWords are masked wherever they appear (a surname, a street).
+	MaskWords []string `json:"mask_words"`
 }
 
 func (s *Store) Settings(ctx context.Context) (Settings, error) {
 	set := Settings{OCRLangs: "eng+hin"}
 	err := s.Get(ctx, "settings", &set)
+	if set.People == nil {
+		set.People = []mask.Person{}
+	}
+	if set.MaskWords == nil {
+		set.MaskWords = []string{}
+	}
 	return set, err
 }
 

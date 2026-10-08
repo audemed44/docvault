@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -80,7 +81,7 @@ func TestSpacesAndSearch(t *testing.T) {
 	}
 
 	f, err := s.Facets(ctx, me.ID)
-	if err != nil || f.Total != 2 || f.Mine != 1 || f.Family != 1 || f.Inbox != 2 || len(f.Categories) != len(DefaultCategories) {
+	if err != nil || f.Total != 2 || f.Mine != 1 || f.Family != 1 || f.Inbox != 2 || f.Unclassified != 2 || len(f.Categories) != len(DefaultCategories)+1 {
 		t.Fatalf("facets %+v %v", f, err)
 	}
 	if err := s.DeleteUser(ctx, dad.ID); !errors.Is(err, ErrInUse) {
@@ -140,7 +141,7 @@ func TestJobsAndCategories(t *testing.T) {
 		t.Fatalf("status %q", got.Status)
 	}
 	s.ClaimJob(ctx)
-	s.FinishJob(ctx, d.ID, JobResult{Error: "no text", Suggestion: &Suggest{Category: "Tax"}})
+	s.FinishJob(ctx, d.ID, JobResult{Error: "no text", Classified: true, Suggestion: &Suggest{Category: "Tax"}})
 	got, _ := s.Document(ctx, me.ID, d.ID)
 	if got.Status != "failed" || got.Error != "no text" || got.Suggestion == nil || got.Suggestion.Category != "Tax" {
 		t.Fatalf("finished %+v", got)
@@ -158,5 +159,36 @@ func TestJobsAndCategories(t *testing.T) {
 	}
 	if err := s.SaveCategories(ctx, []Category{{Name: "a"}, {Name: "A"}}); !errors.Is(err, ErrConflict) {
 		t.Fatalf("duplicate names: %v", err)
+	}
+}
+
+func TestVocab(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+	cats, _ := s.Categories(ctx, 0)
+	names := []string{}
+	for _, c := range cats {
+		names = append(names, c.Name)
+	}
+	if got := strings.Join(names, ","); got != "ID,Property,Medical,Insurance,Tax,Vehicle,Education,Bills,Banking,Other" {
+		t.Fatalf("categories %s", got)
+	}
+	vocab, err := s.TagVocab(ctx)
+	if err != nil || len(vocab) < 40 || vocab[0].Name != "aadhaar" || vocab[0].CategoryID != cats[0].ID {
+		t.Fatalf("vocab %v %+v", err, vocab[:2])
+	}
+	if err := s.SaveTagVocab(ctx, []VocabTag{{Name: "x"}, {Name: "X"}}); !errors.Is(err, ErrConflict) {
+		t.Fatalf("duplicate: %v", err)
+	}
+	if err := s.SaveTagVocab(ctx, []VocabTag{{Name: "pets", CategoryID: cats[1].ID}, {Name: "misc"}}); err != nil {
+		t.Fatal(err)
+	}
+	vocab, _ = s.TagVocab(ctx)
+	if len(vocab) != 2 || vocab[0].Name != "pets" || vocab[1].CategoryID != 0 {
+		t.Fatalf("saved %+v", vocab)
+	}
+	ids, err := s.MatchingIDs(ctx, 1, Filter{Unclassified: true})
+	if err != nil || len(ids) != 0 {
+		t.Fatal(ids, err)
 	}
 }
