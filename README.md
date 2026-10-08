@@ -53,7 +53,7 @@ for every option.
 | `DOCVAULT_TOKEN` | (required) | Creates the first account; Foyer's widget key |
 | `DOCVAULT_DATA_DIR` | `/data` | Database, files, cache and import folders |
 | `DOCVAULT_PORT` | `8080` | Port inside the container |
-| `HOMEPAGE_URL` | | Foyer's address, linked from the header |
+| `HOMEPAGE_URL` | | Foyer's address, linked from the header (admins only) |
 | `DOCVAULT_LLM_KEY` | | API key for suggestions from a chat model (below) |
 | `DOCVAULT_LLM_MODEL` | | The model, e.g. an OpenRouter model ID |
 | `DOCVAULT_LLM_URL` | `https://openrouter.ai/api/v1` | Any OpenAI-compatible API (llama.cpp, Ollama…) |
@@ -94,12 +94,17 @@ account settings.
 
 ## Suggestions
 
-With `DOCVAULT_LLM_KEY` and `DOCVAULT_LLM_MODEL` set, each document's
-text goes to a chat model once it's read, and its answer shows on the
-document as a suggestion: a title, a category, tags and dates, with
-**Apply** and **Dismiss**. Nothing changes until someone applies it; the
-library can apply every waiting suggestion at once ("Apply all"), and ask
-for suggestions for documents processed before it was turned on.
+With `DOCVAULT_LLM_KEY` and `DOCVAULT_LLM_MODEL` set, documents can be
+sent to a chat model, whose answer shows on the document as a suggestion:
+a title, a category, tags and dates, with **Apply** and **Dismiss**.
+Nothing changes until someone applies it.
+
+- **When:** by default only when someone asks: **Get a suggestion** on a
+  document, or **Select** documents in the library and **Get
+  suggestions**. Settings → Suggestions → When can make it automatic for
+  every new document instead.
+- The library shows how many suggestions are waiting, to **Review** and
+  **Apply all**, or apply just the selected ones.
 
 - **Often just the name is sent.** By default (Settings → Suggestions →
   Send: "auto"), a document whose name says what it is ("Dad passport

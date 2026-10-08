@@ -54,7 +54,8 @@ originals in `/data/files/<id>/`, derived files in `/data/cache/<id>/`.
   log or return secrets.
 - `GET /api/foyer/widget` serves the card in Foyer's widget format
   (https://github.com/audemed44/foyer/blob/main/docs/app-widgets.md).
-- `HOMEPAGE_URL` puts a link back to Foyer in the header.
+- `HOMEPAGE_URL` puts a link back to Foyer in the header, for admins
+  only: the family uses Docvault, not the rest of the homelab.
 - UI style is Foyer's: Swiss editorial, always dark (no light theme), heavy
   Inter headlines, tracked uppercase eyebrows, 2px rules over numbered
   headings, square corners, one accent (#2563ff). Check phone width too
