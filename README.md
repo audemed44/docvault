@@ -1,8 +1,6 @@
-# Skeleton
+# Docvault
 
-> The homelab app template: see [TEMPLATE.md](TEMPLATE.md).
-
-TODO one line on what it does.
+Self-hosted home for scanned family documents: iPhone Shortcut uploads, OCR search, private and family libraries.
 
 One small Go binary with the web UI built in, data in SQLite.
 
@@ -10,47 +8,47 @@ One small Go binary with the web UI built in, data in SQLite.
 
 ```yaml
 services:
-  skeleton:
-    image: ghcr.io/audemed44/skeleton:latest
+  docvault:
+    image: ghcr.io/audemed44/docvault:latest
     restart: unless-stopped
     user: "1000:1000"
     environment:
-      - SKELETON_TOKEN=${SKELETON_TOKEN} # openssl rand -hex 32
+      - DOCVAULT_TOKEN=${DOCVAULT_TOKEN} # openssl rand -hex 32
     volumes:
-      - ./skeleton:/data
+      - ./docvault:/data
     ports:
-      - "8089:8080"
+      - "8090:8080"
 ```
 
 See [docker-compose.example.yml](docker-compose.example.yml) for every option.
 
 | Variable | Default | |
 |---|---|---|
-| `SKELETON_TOKEN` | (required) | What you sign in with; also Foyer's widget key |
-| `SKELETON_DATA_DIR` | `/data` | Where the database lives |
-| `SKELETON_PORT` | `8080` | Port inside the container |
+| `DOCVAULT_TOKEN` | (required) | What you sign in with; also Foyer's widget key |
+| `DOCVAULT_DATA_DIR` | `/data` | Where the database lives |
+| `DOCVAULT_PORT` | `8080` | Port inside the container |
 | `HOMEPAGE_URL` | | Foyer's address, linked from the header |
-| `SKELETON_DEBUG` | | Set to log debug messages |
+| `DOCVAULT_DEBUG` | | Set to log debug messages |
 
 ## Foyer
 
-Skeleton serves a [Foyer](https://github.com/audemed44/foyer) card at
+Docvault serves a [Foyer](https://github.com/audemed44/foyer) card at
 `/api/foyer/widget`:
 
 ```yaml
-      - name: Skeleton
-        url: https://skeleton.example.com
-        container: skeleton
+      - name: Docvault
+        url: https://docvault.example.com
+        container: docvault
         widget:
           type: app
-          url: http://skeleton:8080/api/foyer/widget
-          key: ${SKELETON_TOKEN}
+          url: http://docvault:8080/api/foyer/widget
+          key: ${DOCVAULT_TOKEN}
 ```
 
 ## Development
 
 ```sh
 cd frontend && npm install && npm run build && cd ..
-SKELETON_TOKEN=dev SKELETON_DATA_DIR=./data go run ./cmd/skeleton
+DOCVAULT_TOKEN=dev DOCVAULT_DATA_DIR=./data go run ./cmd/docvault
 # or, with hot reload: run the binary, then `npm run dev` in frontend/
 ```
