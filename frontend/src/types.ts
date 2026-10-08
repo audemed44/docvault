@@ -126,6 +126,8 @@ export interface Settings {
   shortcut_url: string;
   people: Person[];
   mask_words: string[];
+  /** What the classifier gets: "auto" (the name, or the text too when the name says nothing), "title" or "text". */
+  classify_from: "auto" | "title" | "text";
   languages: string[];
   /** "llm:<model>", "hook", or "" when suggestions are off. */
   classifier: string;

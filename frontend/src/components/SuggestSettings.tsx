@@ -114,6 +114,7 @@ export function MaskingSection(props: {
     props.settings.people.map((p) => ({ name: p.name, aliases: p.aliases.join(", ") })),
   );
   const [words, setWords] = useState(props.settings.mask_words.join("\n"));
+  const [from, setFrom] = useState(props.settings.classify_from || "auto");
   const [sample, setSample] = useState("");
   const [masked, setMasked] = useState<string | null>(null);
   const save = useAction();
@@ -124,7 +125,8 @@ export function MaskingSection(props: {
     .map((p) => ({ name: p.name.trim(), aliases: splitList(p.aliases) }));
   const dirty =
     JSON.stringify(edited) !== JSON.stringify(props.settings.people) ||
-    JSON.stringify(splitList(words)) !== JSON.stringify(props.settings.mask_words);
+    JSON.stringify(splitList(words)) !== JSON.stringify(props.settings.mask_words) ||
+    from !== props.settings.classify_from;
   const c = props.settings.classifier;
 
   return (
@@ -137,11 +139,11 @@ export function MaskingSection(props: {
       <p class="muted page-lede">
         {c ? (
           <>
-            Each document's text is masked, then sent to the model, which suggests a title,
-            category, tags and dates to apply. ID numbers, phone numbers, emails, long numbers,
-            labelled names, addresses and birth dates, and the people and words below are replaced
-            with placeholders like <code>[pan]</code> first. Unlabelled names and addresses, and
-            what the document is about, still go through.
+            Each document's name (and its text, as set below) is masked, then sent to the model,
+            which suggests a title, category, tags and dates to apply. ID numbers, phone numbers,
+            emails, long numbers, labelled names, addresses and birth dates, and the people and
+            words below are replaced with placeholders like <code>[pan]</code> first. Unlabelled
+            names and addresses, and what the document is about, still go through.
           </>
         ) : (
           <>
@@ -154,8 +156,28 @@ export function MaskingSection(props: {
 
       <div class="form form-narrow">
         <Field
+          label="Send"
+          hint={
+            from === "auto"
+              ? "A name like “Dad passport 2019” is often enough, and sends far less. Scanner names (CamScanner 03-15-2021…) say nothing, so those send the text."
+              : from === "title"
+                ? "Only names leave the server. Documents with scanner names get poor suggestions."
+                : "Best suggestions, most text sent."
+          }
+        >
+          <select
+            class="input select"
+            value={from}
+            onChange={(e) => setFrom(e.currentTarget.value as typeof from)}
+          >
+            <option value="auto">The name, or the text when the name says nothing</option>
+            <option value="title">Only the document's name</option>
+            <option value="text">The name and the text</option>
+          </select>
+        </Field>
+        <Field
           label="People"
-          hint="Their names become [person:1], [person:2]… before anything is sent, so no names leave the server; suggestions tag documents with them. Add other spellings and full names."
+          hint="Their names become [person:1], [person:2]… before anything is sent, so no names leave the server; suggestions tag documents with them. Add full names, other spellings, and what file names call them (Dad, Papa, Mummy)."
         >
           <div class="people">
             {people.map((p, i) => (
@@ -228,6 +250,7 @@ export function MaskingSection(props: {
                       ...rest,
                       people: edited,
                       mask_words: splitList(words),
+                      classify_from: from,
                     }),
                   );
                 })

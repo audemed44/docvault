@@ -123,6 +123,14 @@ func (s *Server) saveSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	set.People, set.MaskWords = people, words
+	switch set.ClassifyFrom {
+	case "auto", "title", "text":
+	case "":
+		set.ClassifyFrom = "auto"
+	default:
+		writeError(w, http.StatusBadRequest, "classify_from must be auto, title or text")
+		return
+	}
 	if err := s.Store.SaveSettings(r.Context(), set); err != nil {
 		storeError(w, err)
 		return

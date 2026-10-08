@@ -154,3 +154,64 @@ func TestOCRTextKept(t *testing.T) {
 		t.Fatalf("result %+v", res)
 	}
 }
+
+func TestDescriptive(t *testing.T) {
+	for title, want := range map[string]bool{
+		"CamScanner 03-15-2021 10.22":       false,
+		"IMG_2041":                          false,
+		"Scan 2024-01-09":                   false,
+		"Scanned Document (3)":              false,
+		"WhatsApp Image 2023-05-01 at 9.10": false,
+		"2021-03-15":                        false,
+		"Dad passport 2019":                 true,
+		"PAN card":                          true,
+		"Car insurance renewal":             true,
+		"LIC":                               true,
+	} {
+		if got := Descriptive(title); got != want {
+			t.Errorf("Descriptive(%q) = %v", title, got)
+		}
+	}
+}
+
+func TestClassifyFrom(t *testing.T) {
+	ctx := context.Background()
+	withCategory := `{"title":"","category":"ID","tags":[],"doc_date":"","expires":""}`
+	noCategory := `{"title":"","category":"","tags":[],"doc_date":"","expires":""}`
+	for _, c := range []struct {
+		name, mode, title, answer string
+		requests                  int
+		textSent                  bool
+	}{
+		{"auto, good title", "auto", "Dad passport 2019", withCategory, 1, false},
+		{"auto, title not enough", "auto", "Dad docs", noCategory, 2, true},
+		{"auto, scanner name", "auto", "CamScanner 03-15-2021 10.22", withCategory, 1, true},
+		{"title only", "title", "CamScanner 03-15-2021 10.22", noCategory, 1, false},
+		{"always text", "text", "Dad passport 2019", withCategory, 1, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			p, st, u := setup(t)
+			st.SaveSettings(ctx, store.Settings{OCRLangs: "eng", ClassifyFrom: c.mode})
+			fake := newFakeModel(t, c.answer)
+			p.Classifier = NewLLM(fake.srv.URL+"/v1", "test-key", "m")
+			d := &store.Document{OwnerID: u.ID, Title: c.title, DocDate: "2024-01-01", FileName: "x.pdf", Mime: "application/pdf", SHA256: "a"}
+			st.CreateDocument(ctx, d, u.ID)
+			job, _ := st.ClaimJob(ctx)
+			res := store.JobResult{Text: "REPUBLIC OF INDIA passport", TextSource: "pdf"}
+			p.classify(ctx, job, &res)
+			if len(fake.requests) != c.requests {
+				t.Fatalf("%d requests", len(fake.requests))
+			}
+			last := fake.requests[len(fake.requests)-1].Messages[1].Content
+			if sent := strings.Contains(last, "REPUBLIC OF INDIA"); sent != c.textSent {
+				t.Fatalf("text sent: %v\n%s", sent, last)
+			}
+			if first := fake.requests[0].Messages[1].Content; c.requests == 2 && strings.Contains(first, "REPUBLIC") {
+				t.Fatal("the first try sent the text")
+			}
+			if strings.Contains(res.ClassifierInput, "REPUBLIC") != c.textSent {
+				t.Fatalf("what it saw: %q", res.ClassifierInput)
+			}
+		})
+	}
+}
