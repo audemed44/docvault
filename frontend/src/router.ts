@@ -2,15 +2,24 @@ import { useEffect, useState } from "preact/hooks";
 
 /**
  * Path routes (the server answers every non-API path with the app):
- *   /                    items
- *   /about               what the app is and how it's set up
+ *   /                    the library: search, filters, documents
+ *   /documents/:id       one document
+ *   /import              bulk import (a folder from this computer, or the server's import folder)
+ *   /settings            account, iPhone setup, and (admins) people, categories, OCR
  */
-export type Route = { page: "home" } | { page: "about" };
+export type Route =
+  { page: "home" } | { page: "document"; id: number } | { page: "import" } | { page: "settings" };
 
 export function parseRoute(path: string): Route {
   const parts = path.split("/").filter(Boolean);
   switch (parts[0]) {
-    case "about":
+    case "documents": {
+      const id = Number(parts[1]);
+      if (Number.isInteger(id) && id > 0) return { page: "document", id };
+      break;
+    }
+    case "import":
+    case "settings":
       return { page: parts[0] };
   }
   return { page: "home" };

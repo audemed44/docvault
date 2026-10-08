@@ -1,48 +1,65 @@
 import { ArrowLeft, LogOut } from "lucide-preact";
 import { useEffect, useState } from "preact/hooks";
 import { api, setUnauthorizedHandler } from "./api";
-import { AboutPage } from "./components/AboutPage";
-import { ItemsPage } from "./components/ItemsPage";
+import { DocumentPage } from "./components/DocumentPage";
+import { ImportPage } from "./components/ImportPage";
+import { LibraryPage } from "./components/LibraryPage";
 import { Login } from "./components/Login";
+import { SettingsPage } from "./components/SettingsPage";
 import { onLinkClick, useRoute, type Route } from "./router";
-import type { Session } from "./types";
+import type { Session, User } from "./types";
 
 export function App() {
   const route = useRoute();
   const [session, setSession] = useState<Session | null>(null);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    setUnauthorizedHandler(() => setSession({ authenticated: false }));
+  const load = () =>
     api
       .session()
       .then(setSession)
       .catch((e: Error) => setError(e.message));
+
+  useEffect(() => {
+    setUnauthorizedHandler(() => load());
+    load();
   }, []);
 
   if (error) return <div class="boot">Can't reach Docvault: {error}</div>;
   if (!session) return <div class="boot" />;
-  if (!session.authenticated) return <Login onDone={setSession} />;
+  if (!session.authenticated || !session.user) {
+    return <Login setup={!!session.setup_needed} onDone={setSession} />;
+  }
   return (
     <Shell
+      user={session.user}
       foyerURL={session.foyer_url}
       route={route}
+      onUser={(user) => setSession({ ...session, user })}
       onSignOut={() => setSession({ authenticated: false })}
     />
   );
 }
 
 const NAV: { page: Route["page"]; href: string; label: string }[] = [
-  { page: "home", href: "/", label: "Items" },
-  { page: "about", href: "/about", label: "About" },
+  { page: "home", href: "/", label: "Library" },
+  { page: "import", href: "/import", label: "Import" },
+  { page: "settings", href: "/settings", label: "Settings" },
 ];
 
-function Shell(props: { route: Route; foyerURL?: string; onSignOut: () => void }) {
-  const { route } = props;
+function Shell(props: {
+  route: Route;
+  user: User;
+  foyerURL?: string;
+  onUser: (u: User) => void;
+  onSignOut: () => void;
+}) {
+  const { route, user } = props;
   const signOut = async () => {
     await api.logout().catch(() => {});
     props.onSignOut();
   };
+  const active = route.page === "document" ? "home" : route.page;
   return (
     <div class="shell" onClick={onLinkClick}>
       <header class="topbar">
@@ -54,23 +71,30 @@ function Shell(props: { route: Route; foyerURL?: string; onSignOut: () => void }
         )}
         <a class="brand" href="/">
           <span class="brand-mark" aria-hidden="true" />
-          Docvault
+          <span class="brand-text">Docvault</span>
         </a>
         <span class="spacer" />
         <nav class="topnav" aria-label="Pages">
           {NAV.map((n) => (
-            <a key={n.page} class={route.page === n.page ? "active" : ""} href={n.href}>
+            <a key={n.page} class={active === n.page ? "active" : ""} href={n.href}>
               {n.label}
             </a>
           ))}
         </nav>
-        <button class="icon-btn" onClick={signOut} title="Sign out" aria-label="Sign out">
+        <button
+          class="icon-btn"
+          onClick={signOut}
+          title={`Sign out ${user.name}`}
+          aria-label="Sign out"
+        >
           <LogOut size={16} />
         </button>
       </header>
       <main>
-        {route.page === "home" && <ItemsPage />}
-        {route.page === "about" && <AboutPage />}
+        {route.page === "home" && <LibraryPage user={user} />}
+        {route.page === "document" && <DocumentPage key={route.id} id={route.id} user={user} />}
+        {route.page === "import" && <ImportPage user={user} />}
+        {route.page === "settings" && <SettingsPage user={user} onUser={props.onUser} />}
       </main>
     </div>
   );

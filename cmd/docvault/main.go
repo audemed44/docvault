@@ -15,6 +15,7 @@ import (
 	"time"
 	_ "time/tzdata" // the runtime image may have no zoneinfo; TZ needs this
 
+	"github.com/audemed44/docvault/internal/process"
 	"github.com/audemed44/docvault/internal/server"
 	"github.com/audemed44/docvault/internal/store"
 	"github.com/audemed44/docvault/web"
@@ -39,7 +40,7 @@ func main() {
 
 	token := os.Getenv("DOCVAULT_TOKEN")
 	if token == "" {
-		slog.Error("set DOCVAULT_TOKEN: it's what you sign in with, and what Foyer uses for the widget")
+		slog.Error("set DOCVAULT_TOKEN: it creates the first account, and Foyer uses it for the widget")
 		os.Exit(1)
 	}
 	dataDir := env("DOCVAULT_DATA_DIR", "/data")
@@ -61,7 +62,22 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	app := server.New(server.Options{Store: db, Token: token, FoyerURL: foyerURL(), Web: dist})
+	var classifier *process.Classifier
+	if u := os.Getenv("DOCVAULT_CLASSIFIER_URL"); u != "" {
+		classifier = process.NewClassifier(u, os.Getenv("DOCVAULT_CLASSIFIER_TOKEN"))
+		slog.Info("classifier on: documents' text goes to it for suggestions", "url", u)
+	}
+	proc := process.New(process.Options{
+		Store: db, Files: filepath.Join(dataDir, "files"), Cache: filepath.Join(dataDir, "cache"), Classifier: classifier,
+	})
+	app, err := server.New(server.Options{
+		Store: db, Processor: proc, Token: token, DataDir: dataDir, FoyerURL: foyerURL(), Web: dist,
+	})
+	if err != nil {
+		slog.Error("could not set up the data folder", "err", err)
+		os.Exit(1)
+	}
+	go proc.Run(ctx)
 
 	srv := &http.Server{
 		Addr:              ":" + env("DOCVAULT_PORT", "8080"),

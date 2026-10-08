@@ -1,4 +1,16 @@
-import type { Item, Session } from "./types";
+import type {
+  APIToken,
+  Category,
+  Doc,
+  DocList,
+  Facets,
+  Filter,
+  ImportReport,
+  Session,
+  Settings,
+  UploadResponse,
+  User,
+} from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -24,7 +36,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       // not JSON
     }
-    if (res.status === 401 && !path.startsWith("/api/session")) onUnauthorized();
+    if (res.status === 401 && !path.startsWith("/api/session") && !path.startsWith("/api/setup")) {
+      onUnauthorized();
+    }
     throw new ApiError(message, res.status);
   }
   if (res.status === 204) return undefined as T;
@@ -38,15 +52,114 @@ const json = (method: string, body: unknown): RequestInit => ({
   body: JSON.stringify(body),
 });
 
+export function filterQuery(f: Partial<Filter>, extra: Record<string, string> = {}): string {
+  const p = new URLSearchParams();
+  if (f.q?.trim()) p.set("q", f.q.trim());
+  if (f.space) p.set("space", f.space);
+  if (f.category) p.set("category", f.category);
+  if (f.tag) p.set("tag", f.tag);
+  if (f.year) p.set("year", f.year);
+  if (f.expiring) p.set("expiring", "1");
+  if (f.status) p.set("status", f.status);
+  for (const [k, v] of Object.entries(extra)) p.set(k, v);
+  const s = p.toString();
+  return s ? `?${s}` : "";
+}
+
+export const docURL = {
+  file: (id: number, download = false) =>
+    `/api/documents/${id}/file${download ? "?download=1" : ""}`,
+  original: (id: number) => `/api/documents/${id}/original`,
+  thumb: (d: Doc) => `/api/documents/${d.id}/thumb?v=${encodeURIComponent(d.updated + d.status)}`,
+};
+
+export interface UploadFields {
+  title?: string;
+  category?: string;
+  tags?: string;
+  date?: string;
+  notes?: string;
+  space?: "family" | "private";
+  /** The file's own time (ms), for imports. */
+  modified?: number;
+}
+
+/** Uploads with progress (fetch has no upload progress). */
+export function upload(
+  files: File[],
+  fields: UploadFields,
+  onProgress?: (fraction: number) => void,
+): Promise<UploadResponse> {
+  const form = new FormData();
+  for (const [k, v] of Object.entries(fields)) {
+    if (v !== undefined && v !== "") form.append(k, String(v));
+  }
+  for (const f of files) form.append("file", f, f.name);
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/upload");
+    xhr.setRequestHeader("Accept", "application/json");
+    xhr.upload.onprogress = (e) => e.lengthComputable && onProgress?.(e.loaded / e.total);
+    xhr.onerror = () => reject(new ApiError("network error", 0));
+    xhr.onload = () => {
+      let body: (UploadResponse & { error?: string }) | null = null;
+      try {
+        body = JSON.parse(xhr.responseText);
+      } catch {
+        // not JSON
+      }
+      if (xhr.status === 401) onUnauthorized();
+      if (body?.results) resolve(body);
+      else reject(new ApiError(body?.error ?? `HTTP ${xhr.status}`, xhr.status));
+    };
+    xhr.send(form);
+  });
+}
+
 export const api = {
   session: () => request<Session>("/api/session"),
-  login: (token: string) => request<Session>("/api/session", json("POST", { token })),
+  login: (username: string, password: string) =>
+    request<Session>("/api/session", json("POST", { username, password })),
+  setup: (body: { token: string; username: string; name: string; password: string }) =>
+    request<Session>("/api/setup", json("POST", body)),
   logout: () => request<void>("/api/session", { method: "DELETE" }),
+  updateMe: (body: { name: string; current_password?: string; password?: string }) =>
+    request<User | Session>("/api/me", json("PUT", body)),
 
-  items: () => request<Item[]>("/api/items"),
-  saveItem: (it: Partial<Item>) =>
-    it.id
-      ? request<Item>(`/api/items/${it.id}`, json("PUT", it))
-      : request<Item>("/api/items", json("POST", it)),
-  deleteItem: (id: number) => request<void>(`/api/items/${id}`, { method: "DELETE" }),
+  tokens: () => request<APIToken[]>("/api/tokens"),
+  createToken: (name: string) => request<APIToken>("/api/tokens", json("POST", { name })),
+  deleteToken: (id: number) => request<void>(`/api/tokens/${id}`, { method: "DELETE" }),
+
+  users: () => request<User[]>("/api/users"),
+  saveUser: (u: Partial<User> & { password?: string }) =>
+    u.id
+      ? request<User>(`/api/users/${u.id}`, json("PUT", u))
+      : request<User>("/api/users", json("POST", u)),
+  deleteUser: (id: number) => request<void>(`/api/users/${id}`, { method: "DELETE" }),
+
+  categories: () => request<Category[]>("/api/categories"),
+  saveCategories: (cats: Partial<Category>[]) =>
+    request<Category[]>("/api/categories", json("PUT", cats)),
+  settings: () => request<Settings>("/api/settings"),
+  saveSettings: (s: { ocr_langs: string; shortcut_url: string }) =>
+    request<Settings>("/api/settings", json("PUT", s)),
+
+  facets: () => request<Facets>("/api/facets"),
+  documents: (f: Partial<Filter>, offset = 0, limit = 60) =>
+    request<DocList>(
+      `/api/documents${filterQuery(f, { offset: String(offset), limit: String(limit) })}`,
+    ),
+  document: (id: number) => request<Doc>(`/api/documents/${id}`),
+  documentText: (id: number) => request<{ text: string }>(`/api/documents/${id}/text`),
+  updateDocument: (d: Doc) => request<Doc>(`/api/documents/${d.id}`, json("PUT", d)),
+  deleteDocument: (id: number) => request<void>(`/api/documents/${id}`, { method: "DELETE" }),
+  reprocess: (id: number, ocr: boolean, lang = "") =>
+    request<Doc>(`/api/documents/${id}/reprocess`, json("POST", { ocr, lang })),
+  applySuggestion: (id: number) =>
+    request<Doc>(`/api/documents/${id}/suggestion`, { method: "POST" }),
+  dismissSuggestion: (id: number) =>
+    request<void>(`/api/documents/${id}/suggestion`, { method: "DELETE" }),
+
+  importStatus: () => request<ImportReport>("/api/import"),
+  startImport: () => request<ImportReport>("/api/import", { method: "POST" }),
 };

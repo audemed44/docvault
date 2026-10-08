@@ -1,14 +1,140 @@
+export interface User {
+  id: number;
+  username: string;
+  name: string;
+  admin: boolean;
+  created: string;
+  /** Private documents (in the People list only). */
+  documents: number;
+}
+
 export interface Session {
   authenticated: boolean;
+  /** No accounts yet: the first one is made with DOCVAULT_TOKEN. */
+  setup_needed?: boolean;
+  user?: User;
   /** Foyer, the homelab's start page (HOMEPAGE_URL). */
   foyer_url?: string;
 }
 
-/** The template's example record; replace it with the app's own. */
-export interface Item {
+export type Status = "pending" | "processing" | "ready" | "failed";
+
+export interface Suggestion {
+  title?: string;
+  category?: string;
+  tags?: string[];
+  doc_date?: string;
+  expires?: string;
+}
+
+export interface Doc {
   id: number;
+  family: boolean;
+  owner_id?: number;
+  added_by: string;
   title: string;
-  note: string;
-  done: boolean;
+  /** 0: uncategorised (the inbox). */
+  category_id: number;
+  category: string;
+  doc_date: string;
+  expires: string;
+  notes: string;
+  tags: string[];
+  file_name: string;
+  mime: string;
+  size: number;
+  sha256: string;
+  pages: number;
+  status: Status;
+  error?: string;
+  text_source: "" | "pdf" | "ocr";
+  ocr_lang?: string;
+  suggestion?: Suggestion;
   created: string;
+  updated: string;
+  /** Matching text, matches between \u0002 and \u0003 (search only). */
+  snippet?: string;
+}
+
+export interface DocList {
+  documents: Doc[];
+  total: number;
+}
+
+export interface Category {
+  id: number;
+  name: string;
+  count: number;
+}
+
+export interface Count {
+  name: string;
+  count: number;
+}
+
+export interface Facets {
+  total: number;
+  mine: number;
+  family: number;
+  inbox: number;
+  expiring: number;
+  processing: number;
+  failed: number;
+  categories: Category[];
+  tags: Count[];
+  years: Count[];
+}
+
+export interface Filter {
+  q: string;
+  space: "" | "mine" | "family";
+  /** "" any, "none" the inbox, or a category ID. */
+  category: string;
+  tag: string;
+  year: string;
+  expiring: boolean;
+  status: string;
+}
+
+export interface APIToken {
+  id: number;
+  name: string;
+  hint: string;
+  created: string;
+  used?: string;
+  /** Only when it's just been made. */
+  token?: string;
+}
+
+export interface Settings {
+  ocr_langs: string;
+  shortcut_url: string;
+  languages: string[];
+  classifier: boolean;
+}
+
+export type IngestStatus = "added" | "duplicate" | "skipped" | "failed";
+
+export interface IngestResult {
+  name: string;
+  status: IngestStatus;
+  message?: string;
+  document?: Doc;
+}
+
+export interface UploadResponse {
+  message: string;
+  results: IngestResult[];
+}
+
+export interface ImportReport {
+  running: boolean;
+  started?: string;
+  finished?: string;
+  total: number;
+  added: number;
+  duplicates: number;
+  failed: IngestResult[];
+  folder: string;
+  waiting: number;
 }

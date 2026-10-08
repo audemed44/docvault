@@ -1,0 +1,368 @@
+import { Plus, Search, X } from "lucide-preact";
+import { useEffect, useState } from "preact/hooks";
+import { api } from "../api";
+import { useData } from "../hooks";
+import { bytes, plural } from "../lib";
+import type { Doc, Facets, Filter, User } from "../types";
+import {
+  CategorySelect,
+  DocThumb,
+  docMeta,
+  ExpiryChip,
+  FamilyMark,
+  Snippet,
+  StatusChip,
+} from "./docs";
+import { Empty, ErrorNote, Figure } from "./ui";
+import { UploadDialog } from "./UploadDialog";
+
+const EMPTY: Filter = {
+  q: "",
+  space: "",
+  category: "",
+  tag: "",
+  year: "",
+  expiring: false,
+  status: "",
+};
+
+// Kept between visits, so coming back from a document keeps the search.
+let lastFilter: Filter = EMPTY;
+
+const PAGE = 60;
+
+export function LibraryPage(props: { user: User }) {
+  const [filter, setFilterState] = useState<Filter>(lastFilter);
+  const [query, setQuery] = useState(filter.q);
+  const [more, setMore] = useState<Doc[]>([]);
+  const [uploading, setUploading] = useState<File[] | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const facets = useData(api.facets, 15_000);
+
+  const setFilter = (f: Filter) => {
+    lastFilter = f;
+    setMore([]);
+    setFilterState(f);
+  };
+  const docs = useData(() => api.documents(filter), 0, [JSON.stringify(filter)]);
+
+  // Search as you type, a moment after the last key.
+  useEffect(() => {
+    if (query === filter.q) return;
+    const t = setTimeout(() => setFilter({ ...filter, q: query }), 250);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  // Refresh while documents are being processed.
+  const busy = (docs.data?.documents ?? []).some(
+    (d) => d.status === "pending" || d.status === "processing",
+  );
+  useEffect(() => {
+    if (!busy) return;
+    const t = setInterval(docs.reload, 4000);
+    return () => clearInterval(t);
+  }, [busy]);
+
+  const reloadAll = () => {
+    setMore([]);
+    docs.reload();
+    facets.reload();
+  };
+
+  const loadMore = async () => {
+    const offset = (docs.data?.documents.length ?? 0) + more.length;
+    const next = await api.documents(filter, offset, PAGE);
+    setMore([...more, ...next.documents]);
+  };
+
+  const all = [...(docs.data?.documents ?? []), ...more];
+  const total = docs.data?.total ?? 0;
+  const f = facets.data;
+  const filtered = JSON.stringify({ ...filter, q: "" }) !== JSON.stringify({ ...EMPTY, q: "" });
+
+  return (
+    <div
+      class={`page ${dragging ? "dropping" : ""}`}
+      onDragOver={(e) => {
+        if (e.dataTransfer?.types.includes("Files")) {
+          e.preventDefault();
+          setDragging(true);
+        }
+      }}
+      onDragLeave={(e) => e.currentTarget === e.target && setDragging(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDragging(false);
+        const files = Array.from(e.dataTransfer?.files ?? []);
+        if (files.length) setUploading(files);
+      }}
+    >
+      <header class="page-head">
+        <div class="eyebrow eyebrow-accent">Docvault · {props.user.name}</div>
+        <h1 class="page-title">Library</h1>
+        <div class="figures stagger">
+          <Figure value={f ? f.total : "—"} label="Documents" tone="accent" />
+          <button
+            class="figure-btn figure-link"
+            onClick={() => setFilter({ ...EMPTY, category: "none" })}
+          >
+            <Figure value={f ? f.inbox : "—"} label="Inbox" />
+          </button>
+          <button
+            class="figure-btn figure-link"
+            onClick={() => setFilter({ ...EMPTY, expiring: true })}
+          >
+            <Figure
+              value={f ? f.expiring : "—"}
+              label="Expiring soon"
+              tone={f?.expiring ? "warn" : ""}
+            />
+          </button>
+          {!!f?.failed && (
+            <button
+              class="figure-btn figure-link"
+              onClick={() => setFilter({ ...EMPTY, status: "failed" })}
+            >
+              <Figure value={f.failed} label="Failed" tone="bad" />
+            </button>
+          )}
+        </div>
+      </header>
+
+      <div class="library-bar">
+        <label class="search">
+          <Search size={16} />
+          <input
+            type="search"
+            placeholder="Search, even the text inside"
+            value={query}
+            enterkeyhint="search"
+            onInput={(e) => setQuery(e.currentTarget.value)}
+          />
+        </label>
+        <label class="btn btn-primary">
+          <Plus size={15} /> Upload
+          <input
+            type="file"
+            multiple
+            hidden
+            accept="application/pdf,image/*,.heic"
+            onChange={(e) => {
+              const files = Array.from(e.currentTarget.files ?? []);
+              e.currentTarget.value = "";
+              if (files.length) setUploading(files);
+            }}
+          />
+        </label>
+      </div>
+
+      <Filters facets={f} filter={filter} onChange={setFilter} />
+
+      {docs.error && <ErrorNote>{docs.error}</ErrorNote>}
+
+      <section class="section">
+        <div class="results-head">
+          <span class="eyebrow">
+            {docs.data ? plural(total, "document") : "Loading"}
+            {filter.q && ` matching “${filter.q}”`}
+          </span>
+          {(filtered || filter.q) && (
+            <button
+              class="link-btn"
+              onClick={() => {
+                setQuery("");
+                setFilter(EMPTY);
+              }}
+            >
+              Clear
+            </button>
+          )}
+        </div>
+        {!docs.data && <div class="loading loading-list" />}
+        {docs.data && all.length === 0 && (
+          <Empty>
+            {f?.total === 0 ? (
+              <>
+                Nothing here yet. Upload a scan, drop files on this page, or{" "}
+                <a class="link-btn" href="/import">
+                  import a folder
+                </a>
+                .
+              </>
+            ) : (
+              "No documents match."
+            )}
+          </Empty>
+        )}
+        {all.length > 0 && (
+          <>
+            <DocGrid docs={all} />
+            <DocTable docs={all} />
+          </>
+        )}
+        {all.length < total && (
+          <button class="btn more-btn" onClick={loadMore}>
+            Show more ({total - all.length} left)
+          </button>
+        )}
+      </section>
+
+      {uploading && (
+        <UploadDialog
+          files={uploading}
+          categories={f?.categories ?? []}
+          onClose={() => setUploading(null)}
+          onDone={() => {
+            setUploading(null);
+            reloadAll();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function Filters(props: { facets: Facets | null; filter: Filter; onChange: (f: Filter) => void }) {
+  const { facets: f, filter } = props;
+  const set = (patch: Partial<Filter>) => props.onChange({ ...filter, ...patch });
+  return (
+    <div class="filters">
+      <div class="seg">
+        {(
+          [
+            ["", "All", f?.total],
+            ["mine", "Mine", f?.mine],
+            ["family", "Family", f?.family],
+          ] as const
+        ).map(([v, label, n]) => (
+          <button
+            key={v}
+            class={filter.space === v ? "active" : ""}
+            onClick={() => set({ space: v })}
+          >
+            {label}
+            {n !== undefined && <span class="seg-count">{n}</span>}
+          </button>
+        ))}
+      </div>
+      <CategorySelect
+        value={filter.category}
+        categories={
+          f?.categories.filter((c) => c.count > 0 || String(c.id) === filter.category) ?? []
+        }
+        onChange={(category) => set({ category })}
+        any="All categories"
+        inbox={`Inbox${f ? ` (${f.inbox})` : ""}`}
+      />
+      {!!f?.tags.length && (
+        <select
+          class="input select"
+          value={filter.tag}
+          onChange={(e) => set({ tag: e.currentTarget.value })}
+        >
+          <option value="">All tags</option>
+          {f.tags.map((t) => (
+            <option key={t.name} value={t.name}>
+              {t.name} ({t.count})
+            </option>
+          ))}
+        </select>
+      )}
+      {!!f && f.years.length > 1 && (
+        <select
+          class="input select"
+          value={filter.year}
+          onChange={(e) => set({ year: e.currentTarget.value })}
+        >
+          <option value="">Any year</option>
+          {f.years.map((y) => (
+            <option key={y.name} value={y.name}>
+              {y.name} ({y.count})
+            </option>
+          ))}
+        </select>
+      )}
+      {filter.expiring && (
+        <button class="chip chip-warn chip-button" onClick={() => set({ expiring: false })}>
+          With expiry dates <X size={11} />
+        </button>
+      )}
+      {filter.status && (
+        <button class="chip chip-bad chip-button" onClick={() => set({ status: "" })}>
+          {filter.status} <X size={11} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Phones: a grid of page-one thumbnails. */
+function DocGrid(props: { docs: Doc[] }) {
+  return (
+    <div class="doc-grid">
+      {props.docs.map((d) => (
+        <a key={d.id} class="doc-card" href={`/documents/${d.id}`}>
+          <DocThumb doc={d} />
+          <span class="doc-card-title">{d.title}</span>
+          <span class="doc-card-meta">{docMeta(d)}</span>
+          <span class="chips">
+            <StatusChip doc={d} />
+            <ExpiryChip expires={d.expires} />
+            <FamilyMark doc={d} />
+          </span>
+          <Snippet text={d.snippet} />
+        </a>
+      ))}
+    </div>
+  );
+}
+
+/** Desktop: a table. */
+function DocTable(props: { docs: Doc[] }) {
+  return (
+    <div class="table-wrap doc-table">
+      <table class="table">
+        <thead>
+          <tr>
+            <th />
+            <th>Title</th>
+            <th>Category</th>
+            <th>Date</th>
+            <th>Tags</th>
+            <th class="num">Pages</th>
+            <th class="num">Size</th>
+          </tr>
+        </thead>
+        <tbody>
+          {props.docs.map((d) => (
+            <tr key={d.id}>
+              <td class="thumb-cell">
+                <a href={`/documents/${d.id}`} tabIndex={-1}>
+                  <DocThumb doc={d} class="thumb-small" />
+                </a>
+              </td>
+              <td class="title-cell">
+                <div class="title-stack">
+                  <a class="row-title" href={`/documents/${d.id}`}>
+                    {d.title}
+                  </a>
+                  <span class="chips">
+                    <StatusChip doc={d} />
+                    <ExpiryChip expires={d.expires} />
+                    <FamilyMark doc={d} />
+                  </span>
+                  <Snippet text={d.snippet} />
+                </div>
+              </td>
+              <td>{d.category || <span class="muted">Inbox</span>}</td>
+              <td class="mono">{d.doc_date}</td>
+              <td class="tags-cell">{d.tags.join(", ")}</td>
+              <td class="num mono">{d.pages || ""}</td>
+              <td class="num mono">{bytes(d.size)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
