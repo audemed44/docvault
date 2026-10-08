@@ -127,7 +127,7 @@ func TestJobsAndCategories(t *testing.T) {
 	ctx := context.Background()
 	me := addUser(t, s, "me")
 	d := addDoc(t, s, me, false, "Scan", "a", "")
-	if err := s.Requeue(ctx, me.ID, d.ID, true, "hin"); err != nil {
+	if err := s.Requeue(ctx, me.ID, d.ID, true, "hin", false); err != nil {
 		t.Fatal(err)
 	}
 	j, err := s.ClaimJob(ctx)
@@ -135,7 +135,7 @@ func TestJobsAndCategories(t *testing.T) {
 		t.Fatalf("requeued job %+v %v", j, err)
 	}
 	// Queued again while processing: the old result is dropped.
-	s.Requeue(ctx, me.ID, d.ID, false, "")
+	s.Requeue(ctx, me.ID, d.ID, false, "", false)
 	s.FinishJob(ctx, d.ID, JobResult{Error: "boom"})
 	if got, _ := s.Document(ctx, me.ID, d.ID); got.Status != "pending" {
 		t.Fatalf("status %q", got.Status)

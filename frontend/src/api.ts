@@ -167,10 +167,18 @@ export const api = {
     request<void>(`/api/documents/${id}/suggestion`, { method: "DELETE" }),
   classifierInput: (id: number) =>
     request<{ text: string }>(`/api/documents/${id}/classifier-input`),
-  applySuggestions: (f: Partial<Filter>) =>
-    request<{ applied: number }>(`/api/suggestions/apply${filterQuery(f)}`, { method: "POST" }),
-  requestSuggestions: (f: Partial<Filter>) =>
-    request<{ queued: number }>(`/api/suggestions/request${filterQuery(f)}`, { method: "POST" }),
+  /** Applies the suggestions of the given documents, or of all matching the filter. */
+  applySuggestions: (f: Partial<Filter>, ids?: number[]) =>
+    request<{ applied: number }>(
+      `/api/suggestions/apply${filterQuery(f)}`,
+      ids ? json("POST", { ids }) : { method: "POST" },
+    ),
+  /** Asks for suggestions for the given documents, or all matching the filter. */
+  requestSuggestions: (f: Partial<Filter>, ids?: number[]) =>
+    request<{ queued: number }>(
+      `/api/suggestions/request${filterQuery(f)}`,
+      ids ? json("POST", { ids }) : { method: "POST" },
+    ),
 
   importStatus: () => request<ImportReport>("/api/import"),
   startImport: () => request<ImportReport>("/api/import", { method: "POST" }),

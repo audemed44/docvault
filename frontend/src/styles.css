@@ -1466,3 +1466,48 @@ input[type="date"].input {
     grid-row: 2;
   }
 }
+.selection-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  border-left-color: var(--accent);
+  position: sticky;
+  top: 8px;
+  z-index: 5;
+  background: var(--raised);
+}
+.selection-count {
+  font-weight: 600;
+}
+.doc-card-select {
+  position: relative;
+  text-align: left;
+}
+.select-box {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--fg-2);
+  background: rgb(0 0 0 / 0.6);
+  color: #fff;
+}
+.doc-card-select.selected .select-box {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.doc-card-select.selected .thumb {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.check-cell {
+  width: 28px;
+}
+.row-selected td {
+  background: rgb(var(--accent-rgb) / 0.08);
+}

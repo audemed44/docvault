@@ -128,6 +128,8 @@ export interface Settings {
   mask_words: string[];
   /** What the classifier gets: "auto" (the name, or the text too when the name says nothing), "title" or "text". */
   classify_from: "auto" | "title" | "text";
+  /** "ask": suggestions only when asked for; "auto": every document once it's read. */
+  suggest_new: "ask" | "auto";
   languages: string[];
   /** "llm:<model>", "hook", or "" when suggestions are off. */
   classifier: string;

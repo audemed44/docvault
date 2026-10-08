@@ -171,10 +171,23 @@ func (p *Processor) process(ctx context.Context, job *store.Job) store.JobResult
 		}
 	}
 
-	if p.Classifier != nil && ctx.Err() == nil {
+	if p.wantsSuggestion(ctx, job) {
 		p.classify(ctx, job, &res)
 	}
 	return res
+}
+
+// wantsSuggestion: suggestions are on, and someone asked for one or every
+// document gets one.
+func (p *Processor) wantsSuggestion(ctx context.Context, job *store.Job) bool {
+	if p.Classifier == nil || ctx.Err() != nil {
+		return false
+	}
+	if job.WantSuggestion {
+		return true
+	}
+	set, err := p.Store.Settings(ctx)
+	return err == nil && set.SuggestNew == "auto"
 }
 
 func (p *Processor) classify(ctx context.Context, job *store.Job, res *store.JobResult) {

@@ -434,7 +434,12 @@ function ClassifierSection(props: {
           <button
             class="btn btn-small"
             disabled={busy}
-            onClick={() => run(async () => props.onQueued(await api.reprocess(doc.id, false)))}
+            onClick={() =>
+              run(async () => {
+                await api.requestSuggestions({}, [doc.id]);
+                props.onQueued(await api.document(doc.id));
+              })
+            }
           >
             <Sparkles size={13} /> {doc.classified ? "Suggest again" : "Get a suggestion"}
           </button>

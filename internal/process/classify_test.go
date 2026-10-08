@@ -141,10 +141,10 @@ func TestOCRTextKept(t *testing.T) {
 	d := addFile(t, p, st, u, "scan.pdf", "application/pdf", textPDF("Short"))
 	// Pretend it was OCR'd: asking again without forcing OCR keeps the text.
 	st.ClaimJob(ctx) // nothing queued
-	st.Requeue(ctx, u.ID, d.ID, true, "eng")
+	st.Requeue(ctx, u.ID, d.ID, true, "eng", false)
 	job, _ := st.ClaimJob(ctx)
 	st.FinishJob(ctx, job.ID, store.JobResult{Pages: 1, Text: "earlier OCR text with enough letters to count", TextSource: "ocr", OCRLang: "eng"})
-	st.Requeue(ctx, u.ID, d.ID, false, "")
+	st.Requeue(ctx, u.ID, d.ID, false, "", false)
 	job, _ = st.ClaimJob(ctx)
 	if job.TextSource != "ocr" || job.OCRLang != "eng" || !strings.HasPrefix(job.Text, "earlier") {
 		t.Fatalf("job %+v", job)
@@ -213,5 +213,36 @@ func TestClassifyFrom(t *testing.T) {
 				t.Fatalf("what it saw: %q", res.ClassifierInput)
 			}
 		})
+	}
+}
+
+func TestWantsSuggestion(t *testing.T) {
+	p, st, u := setup(t)
+	ctx := context.Background()
+	d := &store.Document{OwnerID: u.ID, Title: "x", DocDate: "2024-01-01", FileName: "x.pdf", Mime: "application/pdf", SHA256: "a"}
+	st.CreateDocument(ctx, d, u.ID)
+	job, _ := st.ClaimJob(ctx)
+	if p.wantsSuggestion(ctx, job) {
+		t.Fatal("suggestions are off")
+	}
+	p.Classifier = NewHook("http://127.0.0.1:1", "")
+	if p.wantsSuggestion(ctx, job) {
+		t.Fatal("asked without anyone asking (default: ask)")
+	}
+	st.FinishJob(ctx, job.ID, store.JobResult{})
+	st.Requeue(ctx, u.ID, d.ID, false, "", true)
+	job, _ = st.ClaimJob(ctx)
+	if !job.WantSuggestion || !p.wantsSuggestion(ctx, job) {
+		t.Fatal("asked for, but not wanted")
+	}
+	st.FinishJob(ctx, job.ID, store.JobResult{})
+	st.Requeue(ctx, u.ID, d.ID, false, "", false)
+	job, _ = st.ClaimJob(ctx)
+	if job.WantSuggestion {
+		t.Fatal("the request wasn't cleared")
+	}
+	st.SaveSettings(ctx, store.Settings{SuggestNew: "auto"})
+	if !p.wantsSuggestion(ctx, job) {
+		t.Fatal("auto")
 	}
 }
