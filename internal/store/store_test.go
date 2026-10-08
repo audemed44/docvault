@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/audemed44/docvault/internal/mask"
 )
 
 func open(t *testing.T) *Store {
@@ -214,8 +217,49 @@ func TestUsedTagsScope(t *testing.T) {
 	if used, _ := s.UsedTags(ctx, 0); strings.Join(used, ",") != "house" {
 		t.Fatalf("family: %v", used)
 	}
-	unlisted, _ := s.UnlistedTags(ctx, dad.ID)
-	if len(unlisted) != 2 {
+	// Saving put them on the tag list.
+	if unlisted, _ := s.UnlistedTags(ctx, dad.ID); len(unlisted) != 0 {
 		t.Fatalf("dad's unlisted: %+v", unlisted)
+	}
+}
+
+// A tag put on a document joins the tag list under the document's
+// category; tags already listed keep theirs, and people aren't listed.
+func TestTagsJoinList(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+	me := addUser(t, s, "me")
+	if err := s.SaveSettings(ctx, Settings{People: []mask.Person{{Name: "Pranav"}}}); err != nil {
+		t.Fatal(err)
+	}
+	cats, _ := s.Categories(ctx, me.ID)
+	medical := cats[slices.IndexFunc(cats, func(c Category) bool { return c.Name == "Medical" })].ID
+	d := addDoc(t, s, me, false, "Report", "a", "")
+	d.CategoryID, d.Tags = medical, []string{"Allergy", "Invoice", "pranav"}
+	if err := s.UpdateDocument(ctx, me.ID, d); err != nil {
+		t.Fatal(err)
+	}
+	loose := addDoc(t, s, me, false, "Loose", "b", "")
+	loose.Tags = []string{"misc", "allergy"}
+	if err := s.UpdateDocument(ctx, me.ID, loose); err != nil {
+		t.Fatal(err)
+	}
+	vocab, _ := s.TagVocab(ctx)
+	listed := map[string]int64{}
+	for _, v := range vocab {
+		listed[v.Name] = v.CategoryID
+	}
+	bills := cats[slices.IndexFunc(cats, func(c Category) bool { return c.Name == "Bills" })].ID
+	switch {
+	case listed["Allergy"] != medical:
+		t.Fatalf("Allergy under %d", listed["Allergy"])
+	case listed["invoice"] != bills:
+		t.Fatal("invoice moved")
+	case listed["misc"] != 0 || !slices.ContainsFunc(vocab, func(v VocabTag) bool { return v.Name == "misc" }):
+		t.Fatal("misc isn't listed under any category")
+	case slices.ContainsFunc(vocab, func(v VocabTag) bool { return strings.EqualFold(v.Name, "pranav") }):
+		t.Fatal("a person is on the tag list")
+	case slices.ContainsFunc(vocab, func(v VocabTag) bool { return v.Name == "allergy" }):
+		t.Fatal("allergy listed twice")
 	}
 }

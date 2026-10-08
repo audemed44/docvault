@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -269,6 +270,13 @@ func TestUsedTagsInPrompt(t *testing.T) {
 	d := &store.Document{OwnerID: u.ID, Title: "a", DocDate: "2024-01-01", FileName: "a.pdf", Mime: "application/pdf", SHA256: "a",
 		Tags: []string{"pan", "Pranav", "bank-locker"}}
 	st.CreateDocument(ctx, d, u.ID)
+	// Saving put "bank-locker" on the list; take it off again, as an admin
+	// can in Settings, so it's in use but not listed.
+	vocab, _ := st.TagVocab(ctx)
+	vocab = slices.DeleteFunc(vocab, func(v store.VocabTag) bool { return v.Name == "bank-locker" })
+	if err := st.SaveTagVocab(ctx, vocab); err != nil {
+		t.Fatal(err)
+	}
 	fake := newFakeModel(t, `{"title":"","category":"","tags":[],"new_tags":["Boarding Pass"],"doc_date":"","expires":""}`)
 	p.Classifier = NewLLM(fake.srv.URL+"/v1", "test-key", "m")
 	job, _ := st.ClaimJob(ctx)
