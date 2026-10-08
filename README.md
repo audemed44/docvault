@@ -23,8 +23,9 @@ binary with the web UI built in, data in SQLite, files on disk.
   filters for space, category, tag and year.
 - **Duplicates** (same contents, same space) are skipped, so imports can
   run again.
-- **Suggestions (optional)**: a classifier service suggests a category,
-  tags and dates; see below.
+- **Suggestions (optional)**: a chat model (OpenRouter, or a local one)
+  suggests a title, category, tags and dates from the text, which is
+  **masked first**; see below.
 
 ## Run it
 
@@ -53,7 +54,10 @@ for every option.
 | `DOCVAULT_DATA_DIR` | `/data` | Database, files, cache and import folders |
 | `DOCVAULT_PORT` | `8080` | Port inside the container |
 | `HOMEPAGE_URL` | | Foyer's address, linked from the header |
-| `DOCVAULT_CLASSIFIER_URL` | | A service that suggests categories and tags (below) |
+| `DOCVAULT_LLM_KEY` | | API key for suggestions from a chat model (below) |
+| `DOCVAULT_LLM_MODEL` | | The model, e.g. an OpenRouter model ID |
+| `DOCVAULT_LLM_URL` | `https://openrouter.ai/api/v1` | Any OpenAI-compatible API (llama.cpp, Ollama…) |
+| `DOCVAULT_CLASSIFIER_URL` | | Or: your own service that takes the input as JSON (below) |
 | `DOCVAULT_CLASSIFIER_TOKEN` | | Sent to it as a bearer token |
 | `DOCVAULT_DEBUG` | | Set to log debug messages |
 
@@ -88,33 +92,57 @@ JSON. Other fields: `tags` (comma-separated), `date` (YYYY-MM-DD), `notes`,
 separate documents. API tokens can upload and read but can't change
 account settings.
 
-## Suggestions: the classifier hook
+## Suggestions
 
-When `DOCVAULT_CLASSIFIER_URL` is set, Docvault POSTs each document after
-its text is read:
+With `DOCVAULT_LLM_KEY` and `DOCVAULT_LLM_MODEL` set, each document's
+text goes to a chat model once it's read, and its answer shows on the
+document as a suggestion: a title, a category, tags and dates, with
+**Apply** and **Dismiss**. Nothing changes until someone applies it; the
+library can apply every waiting suggestion at once ("Apply all"), and ask
+for suggestions for documents processed before it was turned on.
+
+- **Only the masked text is sent**, at most 12 KB of it, never the file.
+  `internal/mask` replaces Aadhaar and VID numbers, PAN, passport, driving
+  licence and vehicle numbers, card numbers (Luhn) and Aadhaar (Verhoeff)
+  by checksum, phones, emails, any other run of 6+ digits, labelled names,
+  addresses and birth dates ("Name:", "S/O", "Address:", "DOB:"), the
+  family's names (Settings → Suggestions: they become `[person:1]`…, so
+  no names leave the server) and any other words you list. Dates and
+  amounts are kept. It's a strong reduction, not anonymisation:
+  unlabelled names and addresses, and what a document is about, still go
+  through. **What the classifier saw** on each document shows exactly what
+  was sent, and Settings has a box to try the masking on any text.
+- **Only your categories and tags** can come back: the request carries a
+  JSON schema listing them, and anything else is dropped (Settings → Tags
+  manages the list; people are tags too).
+- On OpenRouter, requests ask for providers that neither keep nor train
+  on prompts (`provider: {data_collection: "deny", zdr: true}`). A local
+  model (`DOCVAULT_LLM_URL=http://llama:8080/v1`) keeps everything on
+  the server.
+- Asking again reuses a document's OCR text instead of running OCR again.
+
+### Your own classifier
+
+`DOCVAULT_CLASSIFIER_URL` instead POSTs the same masked input as JSON:
 
 ```json
 {
   "document_id": 42,
-  "title": "Scan 2026-10-08",
-  "text": "SAMPLE GENERAL INSURANCE … (up to 24 KB)",
-  "categories": ["ID", "Property", "Medical", "Insurance", "Tax", "…"],
-  "tags": ["car", "policy", "…tags already in use"]
+  "title": "CamScanner 03-15-2021 10.22",
+  "text": "INCOME TAX DEPARTMENT … [pan] … Name: [person:1] …",
+  "categories": [{ "name": "ID", "tags": ["aadhaar", "pan", "…"] }, "…"],
+  "tags": ["aadhaar", "pan", "…", "[person:1]", "[person:2]"],
+  "people": ["[person:1]", "[person:2]"]
 }
 ```
 
-and expects (every field optional):
+and expects (every field optional; `[person:n]` works in the title and
+tags):
 
 ```json
-{ "title": "Car insurance policy", "category": "Insurance", "tags": ["car"],
-  "doc_date": "2025-11-20", "expires": "2026-11-19" }
+{ "title": "PAN card - [person:1]", "category": "ID", "tags": ["pan", "[person:1]"],
+  "doc_date": "2021-03-15", "expires": "" }
 ```
-
-Unknown categories and malformed dates are dropped. The suggestion is shown
-on the document with **Apply** and **Dismiss**; nothing changes until
-someone applies it. Whatever the URL points at receives the documents'
-text, so point it at something on your own server (a small wrapper around
-a local model) to keep documents private.
 
 ## Foyer
 
