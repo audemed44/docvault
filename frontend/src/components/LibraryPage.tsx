@@ -1,4 +1,4 @@
-import { Plus, Search, Sparkles, X } from "lucide-preact";
+import { Check, Plus, Search, Sparkles, X } from "lucide-preact";
 import { useEffect, useState } from "preact/hooks";
 import { api } from "../api";
 import { useData } from "../hooks";
@@ -39,6 +39,7 @@ export function LibraryPage(props: { user: User }) {
   const [more, setMore] = useState<Doc[]>([]);
   const [uploading, setUploading] = useState<File[] | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [selected, setSelected] = useState<Set<number> | null>(null); // null: not selecting
   const facets = useData(api.facets, 15_000);
   const settings = useData(api.settings);
 
@@ -79,6 +80,13 @@ export function LibraryPage(props: { user: User }) {
   };
 
   const all = [...(docs.data?.documents ?? []), ...more];
+  const toggle = (id: number) => {
+    if (!selected) return;
+    const next = new Set(selected);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelected(next);
+  };
   const total = docs.data?.total ?? 0;
   const f = facets.data;
   const filtered = JSON.stringify({ ...filter, q: "" }) !== JSON.stringify({ ...EMPTY, q: "" });
@@ -189,7 +197,22 @@ export function LibraryPage(props: { user: User }) {
               Clear
             </button>
           )}
+          <span class="spacer" />
+          {all.length > 0 && (
+            <button class="link-btn" onClick={() => setSelected(selected ? null : new Set())}>
+              {selected ? "Done" : "Select"}
+            </button>
+          )}
         </div>
+        {selected && (
+          <SelectionBar
+            docs={all}
+            selected={selected}
+            classifierOn={!!settings.data?.classifier}
+            onSelect={setSelected}
+            onChanged={reloadAll}
+          />
+        )}
         {!docs.data && <div class="loading loading-list" />}
         {docs.data && all.length === 0 && (
           <Empty>
@@ -208,8 +231,8 @@ export function LibraryPage(props: { user: User }) {
         )}
         {all.length > 0 && (
           <>
-            <DocGrid docs={all} />
-            <DocTable docs={all} />
+            <DocGrid docs={all} selected={selected} onToggle={toggle} />
+            <DocTable docs={all} selected={selected} onToggle={toggle} />
           </>
         )}
         {all.length < total && (
@@ -383,6 +406,13 @@ function SuggestionBar(props: {
             disabled={busy}
             onClick={() =>
               run(async () => {
+                if (
+                  !confirm(
+                    `Send the masked text of ${plural(f.unclassified, "document")} to the model for suggestions?`,
+                  )
+                ) {
+                  return;
+                }
                 const r = await api.requestSuggestions({ unclassified: true });
                 setDone(
                   `Asked for ${plural(r.queued, "suggestion")}; they arrive as each is read.`,
@@ -399,34 +429,133 @@ function SuggestionBar(props: {
   );
 }
 
-/** Phones: a grid of page-one thumbnails. */
-function DocGrid(props: { docs: Doc[] }) {
+/** The selected documents: ask for their suggestions, or apply them. */
+function SelectionBar(props: {
+  docs: Doc[];
+  selected: Set<number>;
+  classifierOn: boolean;
+  onSelect: (s: Set<number>) => void;
+  onChanged: () => void;
+}) {
+  const { selected } = props;
+  const { busy, error, run } = useAction();
+  const [done, setDone] = useState("");
+  const ids = [...selected];
+  const withSuggestion = props.docs.filter((d) => selected.has(d.id) && d.suggestion).length;
+  return (
+    <div class="note selection-bar">
+      <span class="selection-count">{plural(selected.size, "selected", "selected")}</span>
+      <button class="link-btn" onClick={() => props.onSelect(new Set(props.docs.map((d) => d.id)))}>
+        All shown
+      </button>
+      {selected.size > 0 && (
+        <button class="link-btn" onClick={() => props.onSelect(new Set())}>
+          None
+        </button>
+      )}
+      <span class="spacer" />
+      {done && <span class="tone-good">{done}</span>}
+      {error && <span class="form-error">{error}</span>}
+      <div class="toolbar">
+        {props.classifierOn && (
+          <button
+            class="btn btn-small"
+            disabled={busy || !selected.size}
+            onClick={() =>
+              run(async () => {
+                const r = await api.requestSuggestions({}, ids);
+                setDone(`Asked for ${plural(r.queued, "suggestion")}.`);
+                props.onChanged();
+              })
+            }
+          >
+            <Sparkles size={13} /> Get suggestions
+          </button>
+        )}
+        <button
+          class="btn btn-primary btn-small"
+          disabled={busy || !withSuggestion}
+          onClick={() =>
+            run(async () => {
+              const r = await api.applySuggestions({}, ids);
+              setDone(`Applied ${plural(r.applied, "suggestion")}.`);
+              props.onSelect(new Set());
+              props.onChanged();
+            })
+          }
+        >
+          Apply {withSuggestion ? plural(withSuggestion, "suggestion") : "suggestions"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function SuggestedChip(props: { doc: Doc }) {
+  return props.doc.suggestion ? <span class="chip chip-accent">Suggestion</span> : null;
+}
+
+interface Selectable {
+  docs: Doc[];
+  selected: Set<number> | null;
+  onToggle: (id: number) => void;
+}
+
+/** Phones: a grid of page-one thumbnails. While selecting, a tap selects. */
+function DocGrid(props: Selectable) {
+  const { selected } = props;
   return (
     <div class="doc-grid">
-      {props.docs.map((d) => (
-        <a key={d.id} class="doc-card" href={`/documents/${d.id}`}>
-          <DocThumb doc={d} />
-          <span class="doc-card-title">{d.title}</span>
-          <span class="doc-card-meta">{docMeta(d)}</span>
-          <span class="chips">
-            <StatusChip doc={d} />
-            <ExpiryChip expires={d.expires} />
-            <FamilyMark doc={d} />
-          </span>
-          <Snippet text={d.snippet} />
-        </a>
-      ))}
+      {props.docs.map((d) => {
+        const body = (
+          <>
+            <DocThumb doc={d} />
+            <span class="doc-card-title">{d.title}</span>
+            <span class="doc-card-meta">{docMeta(d)}</span>
+            <span class="chips">
+              <StatusChip doc={d} />
+              <SuggestedChip doc={d} />
+              <ExpiryChip expires={d.expires} />
+              <FamilyMark doc={d} />
+            </span>
+            <Snippet text={d.snippet} />
+          </>
+        );
+        if (!selected) {
+          return (
+            <a key={d.id} class="doc-card" href={`/documents/${d.id}`}>
+              {body}
+            </a>
+          );
+        }
+        return (
+          <button
+            key={d.id}
+            type="button"
+            class={`doc-card doc-card-select ${selected.has(d.id) ? "selected" : ""}`}
+            aria-pressed={selected.has(d.id)}
+            onClick={() => props.onToggle(d.id)}
+          >
+            <span class="select-box" aria-hidden="true">
+              {selected.has(d.id) && <Check size={14} />}
+            </span>
+            {body}
+          </button>
+        );
+      })}
     </div>
   );
 }
 
 /** Desktop: a table. */
-function DocTable(props: { docs: Doc[] }) {
+function DocTable(props: Selectable) {
+  const { selected } = props;
   return (
     <div class="table-wrap doc-table">
       <table class="table">
         <thead>
           <tr>
+            {selected && <th />}
             <th />
             <th>Title</th>
             <th>Category</th>
@@ -438,7 +567,19 @@ function DocTable(props: { docs: Doc[] }) {
         </thead>
         <tbody>
           {props.docs.map((d) => (
-            <tr key={d.id}>
+            <tr key={d.id} class={selected?.has(d.id) ? "row-selected" : ""}>
+              {selected && (
+                <td class="check-cell">
+                  <label class="check">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(d.id)}
+                      aria-label={`Select ${d.title}`}
+                      onChange={() => props.onToggle(d.id)}
+                    />
+                  </label>
+                </td>
+              )}
               <td class="thumb-cell">
                 <a href={`/documents/${d.id}`} tabIndex={-1}>
                   <DocThumb doc={d} class="thumb-small" />
@@ -451,6 +592,7 @@ function DocTable(props: { docs: Doc[] }) {
                   </a>
                   <span class="chips">
                     <StatusChip doc={d} />
+                    <SuggestedChip doc={d} />
                     <ExpiryChip expires={d.expires} />
                     <FamilyMark doc={d} />
                   </span>

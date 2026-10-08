@@ -115,6 +115,7 @@ export function MaskingSection(props: {
   );
   const [words, setWords] = useState(props.settings.mask_words.join("\n"));
   const [from, setFrom] = useState(props.settings.classify_from || "auto");
+  const [when, setWhen] = useState(props.settings.suggest_new || "ask");
   const [sample, setSample] = useState("");
   const [masked, setMasked] = useState<string | null>(null);
   const save = useAction();
@@ -126,7 +127,8 @@ export function MaskingSection(props: {
   const dirty =
     JSON.stringify(edited) !== JSON.stringify(props.settings.people) ||
     JSON.stringify(splitList(words)) !== JSON.stringify(props.settings.mask_words) ||
-    from !== props.settings.classify_from;
+    from !== props.settings.classify_from ||
+    when !== props.settings.suggest_new;
   const c = props.settings.classifier;
 
   return (
@@ -155,6 +157,23 @@ export function MaskingSection(props: {
       </p>
 
       <div class="form form-narrow">
+        <Field
+          label="When"
+          hint={
+            when === "ask"
+              ? "Nothing is sent until you ask: Get a suggestion on a document, or select documents in the library."
+              : "Every new upload and import is sent once it's read."
+          }
+        >
+          <select
+            class="input select"
+            value={when}
+            onChange={(e) => setWhen(e.currentTarget.value as typeof when)}
+          >
+            <option value="ask">Only when I ask</option>
+            <option value="auto">Automatically, for every new document</option>
+          </select>
+        </Field>
         <Field
           label="Send"
           hint={
@@ -251,6 +270,7 @@ export function MaskingSection(props: {
                       people: edited,
                       mask_words: splitList(words),
                       classify_from: from,
+                      suggest_new: when,
                     }),
                   );
                 })

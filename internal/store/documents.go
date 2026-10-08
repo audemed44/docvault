@@ -630,6 +630,8 @@ type Job struct {
 	// repeated unless it's asked for.
 	TextSource string
 	Text       string
+	// WantSuggestion: someone asked for a suggestion for it.
+	WantSuggestion bool
 }
 
 // JobResult is what processing found out.
@@ -659,8 +661,8 @@ func (s *Store) ClaimJob(ctx context.Context) (*Job, error) {
 	var j Job
 	err := s.db.QueryRowContext(ctx, `UPDATE documents SET status = 'processing', error = ''
 		WHERE id = (SELECT id FROM documents WHERE status = 'pending' ORDER BY id LIMIT 1)
-		RETURNING id, file_path, mime, force_ocr, ocr_lang, title, text_source`).
-		Scan(&j.ID, &j.FilePath, &j.Mime, &j.ForceOCR, &j.OCRLang, &j.Title, &j.TextSource)
+		RETURNING id, file_path, mime, force_ocr, ocr_lang, title, text_source, want_suggestion`).
+		Scan(&j.ID, &j.FilePath, &j.Mime, &j.ForceOCR, &j.OCRLang, &j.Title, &j.TextSource, &j.WantSuggestion)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -696,7 +698,7 @@ func (s *Store) FinishJob(ctx context.Context, id int64, r JobResult) error {
 	}
 	defer tx.Rollback()
 	res, err := tx.ExecContext(ctx, `UPDATE documents SET status = ?, error = ?, pages = ?, text_source = ?,
-		ocr_lang = ?, force_ocr = 0, classify_error = ?,
+		ocr_lang = ?, force_ocr = 0, want_suggestion = 0, classify_error = ?,
 		suggestion = CASE WHEN ? THEN ? ELSE suggestion END,
 		classified = CASE WHEN ? THEN ? ELSE classified END,
 		classifier_input = CASE WHEN ? != '' THEN ? ELSE classifier_input END
@@ -716,11 +718,13 @@ func (s *Store) FinishJob(ctx context.Context, id int64, r JobResult) error {
 }
 
 // Requeue processes a document the user may see again, with OCR forced
-// when forceOCR is set (in lang, or the default when it's empty).
-func (s *Store) Requeue(ctx context.Context, userID, id int64, forceOCR bool, lang string) error {
+// when forceOCR is set (in lang, or the default when it's empty), and a
+// suggestion asked for when suggest is set.
+func (s *Store) Requeue(ctx context.Context, userID, id int64, forceOCR bool, lang string, suggest bool) error {
 	res, err := s.db.ExecContext(ctx, `UPDATE documents SET status = 'pending', error = '', force_ocr = ?,
-		ocr_lang = CASE WHEN ? THEN ? ELSE ocr_lang END
-		WHERE id = ? AND (owner_id = ? OR owner_id IS NULL)`, forceOCR, forceOCR, lang, id, userID)
+		ocr_lang = CASE WHEN ? THEN ? ELSE ocr_lang END,
+		want_suggestion = CASE WHEN ? THEN 1 ELSE want_suggestion END
+		WHERE id = ? AND (owner_id = ? OR owner_id IS NULL)`, forceOCR, forceOCR, lang, suggest, id, userID)
 	if err != nil {
 		return err
 	}

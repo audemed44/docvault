@@ -117,6 +117,8 @@ var migrations = []string{
 	ALTER TABLE documents ADD COLUMN classify_error TEXT NOT NULL DEFAULT ''`,
 	// 3: a Banking category, and the starting tags.
 	seedVocab(),
+	// 4: someone asked for a suggestion (sent with the next processing).
+	`ALTER TABLE documents ADD COLUMN want_suggestion INTEGER NOT NULL DEFAULT 0`,
 }
 
 // Open opens (or creates) the database.
@@ -229,10 +231,13 @@ type Settings struct {
 	// says what the document is, else the text too), "title" or "text"
 	// (the title and the text).
 	ClassifyFrom string `json:"classify_from"`
+	// SuggestNew is "ask" (suggestions only when someone asks for them) or
+	// "auto" (every document, once it's read).
+	SuggestNew string `json:"suggest_new"`
 }
 
 func (s *Store) Settings(ctx context.Context) (Settings, error) {
-	set := Settings{OCRLangs: "eng+hin", ClassifyFrom: "auto"}
+	set := Settings{OCRLangs: "eng+hin", ClassifyFrom: "auto", SuggestNew: "ask"}
 	err := s.Get(ctx, "settings", &set)
 	if set.People == nil {
 		set.People = []mask.Person{}

@@ -376,7 +376,7 @@ func (s *Server) reprocess(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "unknown OCR language "+body.Lang)
 		return
 	}
-	if err := s.Store.Requeue(r.Context(), currentUser(r).ID, d.ID, body.OCR, body.Lang); err != nil {
+	if err := s.Store.Requeue(r.Context(), currentUser(r).ID, d.ID, body.OCR, body.Lang, false); err != nil {
 		storeError(w, err)
 		return
 	}
@@ -436,15 +436,38 @@ func (s *Server) suggest(d *store.Document) {
 	d.Tags = append(d.Tags, sg.Tags...)
 }
 
-// applySuggestions applies the suggestions of every document matching the
+// selection is the documents a bulk action is for: the IDs in a JSON body
+// ({"ids": [...]}) when there is one, else every document matching the
 // filter in the query string.
+func (s *Server) selection(w http.ResponseWriter, r *http.Request, f store.Filter) ([]int64, bool) {
+	if r.ContentLength > 0 || r.Header.Get("Content-Type") != "" {
+		var body struct {
+			IDs []int64 `json:"ids"`
+		}
+		if !readJSON(w, r, 256<<10, &body) {
+			return nil, false
+		}
+		if len(body.IDs) > 5000 {
+			writeError(w, http.StatusBadRequest, "too many documents at once")
+			return nil, false
+		}
+		return body.IDs, true
+	}
+	ids, err := s.Store.MatchingIDs(r.Context(), currentUser(r).ID, f)
+	if err != nil {
+		storeError(w, err)
+		return nil, false
+	}
+	return ids, true
+}
+
+// applySuggestions applies the suggestions of the selected documents.
 func (s *Server) applySuggestions(w http.ResponseWriter, r *http.Request) {
 	me := currentUser(r)
 	f := filterOf(r)
 	f.Suggested = true
-	ids, err := s.Store.MatchingIDs(r.Context(), me.ID, f)
-	if err != nil {
-		storeError(w, err)
+	ids, ok := s.selection(w, r, f)
+	if !ok {
 		return
 	}
 	applied := 0
@@ -465,22 +488,22 @@ func (s *Server) applySuggestions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]int{"applied": applied})
 }
 
-// requestSuggestions queues every document matching the filter for the
-// classifier again (keeping their OCR text).
+// requestSuggestions asks for suggestions for the selected documents: they
+// go through processing again (keeping their OCR text), this time with the
+// classifier.
 func (s *Server) requestSuggestions(w http.ResponseWriter, r *http.Request) {
 	if s.Processor.Classifier == nil {
 		writeError(w, http.StatusConflict, "suggestions are off: set DOCVAULT_LLM_KEY and DOCVAULT_LLM_MODEL")
 		return
 	}
 	me := currentUser(r)
-	ids, err := s.Store.MatchingIDs(r.Context(), me.ID, filterOf(r))
-	if err != nil {
-		storeError(w, err)
+	ids, ok := s.selection(w, r, filterOf(r))
+	if !ok {
 		return
 	}
 	queued := 0
 	for _, id := range ids {
-		if err := s.Store.Requeue(r.Context(), me.ID, id, false, ""); err == nil {
+		if err := s.Store.Requeue(r.Context(), me.ID, id, false, "", true); err == nil {
 			queued++
 		}
 	}

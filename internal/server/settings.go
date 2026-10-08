@@ -123,6 +123,14 @@ func (s *Server) saveSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	set.People, set.MaskWords = people, words
+	switch set.SuggestNew {
+	case "ask", "auto":
+	case "":
+		set.SuggestNew = "ask"
+	default:
+		writeError(w, http.StatusBadRequest, "suggest_new must be ask or auto")
+		return
+	}
 	switch set.ClassifyFrom {
 	case "auto", "title", "text":
 	case "":

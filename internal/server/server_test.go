@@ -422,9 +422,10 @@ func TestSuggestions(t *testing.T) {
 		t.Fatalf("masked %q", masked["text"])
 	}
 	x.json(x.do("PUT", "/api/settings", `{"ocr_langs":"eng","classify_from":"everything"}`, me), 400, nil)
+	x.json(x.do("PUT", "/api/settings", `{"ocr_langs":"eng","suggest_new":"always"}`, me), 400, nil)
 	var set settingsInfo
 	x.json(x.do("GET", "/api/settings", "", me), 200, &set)
-	if len(set.People) != 1 || len(set.People[0].Aliases) != 1 || len(set.MaskWords) != 1 || set.ClassifyFrom != "auto" {
+	if len(set.People) != 1 || len(set.People[0].Aliases) != 1 || len(set.MaskWords) != 1 || set.ClassifyFrom != "auto" || set.SuggestNew != "ask" {
 		t.Fatalf("settings %+v", set)
 	}
 
@@ -473,15 +474,55 @@ func TestSuggestions(t *testing.T) {
 		t.Fatalf("after apply %+v", list.Documents)
 	}
 
-	// Asking again queues them.
+	// Asking again queues them: all matching, or just the selected ones.
 	x.s.Processor.Classifier = stubClassifier{}
 	var queued map[string]int
 	x.json(x.do("POST", "/api/suggestions/request?q=renamed", "", me), 200, &queued)
 	if queued["queued"] != 2 {
 		t.Fatalf("queued %v", queued)
 	}
+	for range 2 {
+		job, _ := x.s.Store.ClaimJob(ctx)
+		if !job.WantSuggestion {
+			t.Fatal("not marked as asked for")
+		}
+		x.s.Store.FinishJob(ctx, job.ID, store.JobResult{Pages: 1, TextSource: "pdf", Text: "text"})
+	}
+	x.json(x.do("POST", "/api/suggestions/request", `{"ids":[2, 999]}`, me), 200, &queued)
+	if queued["queued"] != 1 {
+		t.Fatalf("queued selected %v", queued)
+	}
+	if job, _ := x.s.Store.ClaimJob(ctx); job == nil || job.ID != 2 {
+		t.Fatalf("queued %+v", job)
+	}
 	x.json(x.do("GET", "/api/settings", "", me), 200, &set)
 	if set.Classifier != "stub" {
 		t.Fatalf("classifier %q", set.Classifier)
+	}
+}
+
+func TestFoyerLinkForAdminsOnly(t *testing.T) {
+	x := newServer(t)
+	x.s.FoyerURL = "https://home.example.com"
+	me, dad := x.setup()
+	var info sessionInfo
+	x.json(x.do("GET", "/api/session", "", me), 200, &info)
+	if info.FoyerURL == "" {
+		t.Fatal("admin has no Foyer link")
+	}
+	info = sessionInfo{}
+	x.json(x.do("GET", "/api/session", "", dad), 200, &info)
+	if info.FoyerURL != "" {
+		t.Fatal("Foyer link shown to a member")
+	}
+	info = sessionInfo{}
+	x.json(x.do("GET", "/api/session", "", ""), 200, &info)
+	if info.FoyerURL != "" {
+		t.Fatal("Foyer link shown before sign-in")
+	}
+	info = sessionInfo{}
+	x.json(x.do("POST", "/api/session", `{"username":"dad","password":"password1"}`, ""), 200, &info)
+	if info.FoyerURL != "" {
+		t.Fatal("Foyer link in the sign-in answer")
 	}
 }
