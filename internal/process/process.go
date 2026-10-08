@@ -178,13 +178,27 @@ func (p *Processor) process(ctx context.Context, job *store.Job) store.JobResult
 }
 
 func (p *Processor) classify(ctx context.Context, job *store.Job, res *store.JobResult) {
-	in, people, err := buildInput(ctx, p.Store, job, res.Text)
+	in, set, err := buildInput(ctx, p.Store, job, res.Text)
 	if err != nil {
 		res.ClassifyError = err.Error()
 		return
 	}
-	res.ClassifierInput = in.InputText()
+	people := set.People
+	// Send only the title when that's enough: less of the document leaves.
+	text := in.Text
+	titleOnly := set.ClassifyFrom == "title" || (set.ClassifyFrom != "text" && Descriptive(job.Title))
+	if titleOnly {
+		in.Text = ""
+	}
 	sg, err := p.Classifier.Classify(ctx, in)
+	if err == nil && titleOnly && set.ClassifyFrom != "title" && text != "" {
+		// Auto: the title wasn't enough to pick a category, so try the text.
+		if s := Sanitize(*sg, in, people); s == nil || s.Category == "" {
+			in.Text = text
+			sg, err = p.Classifier.Classify(ctx, in)
+		}
+	}
+	res.ClassifierInput = in.InputText()
 	if err != nil {
 		if ctx.Err() == nil {
 			slog.Warn("classifier", "document", job.ID, "err", err)

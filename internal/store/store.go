@@ -225,10 +225,14 @@ type Settings struct {
 	People []mask.Person `json:"people"`
 	// MaskWords are masked wherever they appear (a surname, a street).
 	MaskWords []string `json:"mask_words"`
+	// ClassifyFrom is what the classifier gets: "auto" (the title when it
+	// says what the document is, else the text too), "title" or "text"
+	// (the title and the text).
+	ClassifyFrom string `json:"classify_from"`
 }
 
 func (s *Store) Settings(ctx context.Context) (Settings, error) {
-	set := Settings{OCRLangs: "eng+hin"}
+	set := Settings{OCRLangs: "eng+hin", ClassifyFrom: "auto"}
 	err := s.Get(ctx, "settings", &set)
 	if set.People == nil {
 		set.People = []mask.Person{}

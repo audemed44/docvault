@@ -72,7 +72,11 @@ func userPrompt(in Input) string {
 	if len(in.People) > 0 {
 		fmt.Fprintf(&b, "\nFamily members: %s\n", strings.Join(in.People, ", "))
 	}
-	fmt.Fprintf(&b, "\nCurrent title: %s\n\nText:\n%s\n", in.Title, in.Text)
+	if in.Text == "" {
+		fmt.Fprintf(&b, "\nCurrent title: %s\n\nText: not sent. Decide from the title; leave doc_date and expires empty unless the title states them.\n", in.Title)
+	} else {
+		fmt.Fprintf(&b, "\nCurrent title: %s\n\nText:\n%s\n", in.Title, in.Text)
+	}
 	return b.String()
 }
 

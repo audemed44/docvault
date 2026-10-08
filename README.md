@@ -101,7 +101,13 @@ document as a suggestion: a title, a category, tags and dates, with
 library can apply every waiting suggestion at once ("Apply all"), and ask
 for suggestions for documents processed before it was turned on.
 
-- **Only the masked text is sent**, at most 12 KB of it, never the file.
+- **Often just the name is sent.** By default (Settings → Suggestions →
+  Send: "auto"), a document whose name says what it is ("Dad passport
+  2019") is classified from its name alone; scanner names ("CamScanner
+  03-15-2021 10.22", "IMG_2041") send the text too, and so does a name
+  that wasn't enough to pick a category. It can also be "only the name"
+  or "the name and the text" every time.
+- **Only masked text is sent**, at most 12 KB of it, never the file.
   `internal/mask` replaces Aadhaar and VID numbers, PAN, passport, driving
   licence and vehicle numbers, card numbers (Luhn) and Aadhaar (Verhoeff)
   by checksum, phones, emails, any other run of 6+ digits, labelled names,

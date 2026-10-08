@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -50,18 +51,18 @@ type CategoryTags struct {
 const maxClassifyText = 12 << 10
 
 // buildInput masks the document and gathers the choices.
-func buildInput(ctx context.Context, st *store.Store, job *store.Job, text string) (Input, []mask.Person, error) {
+func buildInput(ctx context.Context, st *store.Store, job *store.Job, text string) (Input, store.Settings, error) {
 	set, err := st.Settings(ctx)
 	if err != nil {
-		return Input{}, nil, err
+		return Input{}, set, err
 	}
 	cats, err := st.Categories(ctx, 0)
 	if err != nil {
-		return Input{}, nil, err
+		return Input{}, set, err
 	}
 	vocab, err := st.TagVocab(ctx)
 	if err != nil {
-		return Input{}, nil, err
+		return Input{}, set, err
 	}
 	opts := mask.Options{People: set.People, Words: set.MaskWords}
 	if len(text) > maxClassifyText {
@@ -84,12 +85,33 @@ func buildInput(ctx context.Context, st *store.Store, job *store.Job, text strin
 		in.People = append(in.People, mask.Placeholder(i))
 		in.Tags = append(in.Tags, mask.Placeholder(i))
 	}
-	return in, set.People, nil
+	return in, set, nil
 }
 
 // InputText is how the input is shown under "What the classifier saw".
 func (in Input) InputText() string {
+	if in.Text == "" {
+		return "Title: " + in.Title + "\n\n(The text wasn't sent.)"
+	}
 	return "Title: " + in.Title + "\n\n" + in.Text
+}
+
+var (
+	// genericWords are what scanner apps and cameras name files.
+	genericWords = regexp.MustCompile(`(?i)\b(camscanner|scanned|scan|document|doc|new|untitled|img|image|photo|pxl|dsc|dscn|whatsapp|screenshot|file|pdf|page|copy|final|at|am|pm)\b`)
+	letters      = regexp.MustCompile(`\pL{2,}`)
+)
+
+// Descriptive says whether a title says what the document is ("Dad
+// passport 2019") rather than being a scanner's default name
+// ("CamScanner 03-15-2021 10.22", "IMG_2041", "Scan 2024-01-09").
+func Descriptive(title string) bool {
+	rest := genericWords.ReplaceAllString(strings.ReplaceAll(title, "_", " "), " ")
+	n := 0
+	for _, w := range letters.FindAllString(rest, -1) {
+		n += len([]rune(w))
+	}
+	return n >= 3
 }
 
 // Sanitize keeps what's usable from a suggestion: a known category, known

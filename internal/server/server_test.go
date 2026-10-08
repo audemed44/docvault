@@ -421,9 +421,10 @@ func TestSuggestions(t *testing.T) {
 	if masked["text"] != "[person:1], PAN [pan], [masked] Nagar" {
 		t.Fatalf("masked %q", masked["text"])
 	}
+	x.json(x.do("PUT", "/api/settings", `{"ocr_langs":"eng","classify_from":"everything"}`, me), 400, nil)
 	var set settingsInfo
 	x.json(x.do("GET", "/api/settings", "", me), 200, &set)
-	if len(set.People) != 1 || len(set.People[0].Aliases) != 1 || len(set.MaskWords) != 1 {
+	if len(set.People) != 1 || len(set.People[0].Aliases) != 1 || len(set.MaskWords) != 1 || set.ClassifyFrom != "auto" {
 		t.Fatalf("settings %+v", set)
 	}
 
