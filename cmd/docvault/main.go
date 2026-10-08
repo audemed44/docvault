@@ -62,11 +62,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	var classifier *process.Classifier
-	if u := os.Getenv("DOCVAULT_CLASSIFIER_URL"); u != "" {
-		classifier = process.NewClassifier(u, os.Getenv("DOCVAULT_CLASSIFIER_TOKEN"))
-		slog.Info("classifier on: documents' text goes to it for suggestions", "url", u)
-	}
+	classifier := newClassifier()
 	proc := process.New(process.Options{
 		Store: db, Files: filepath.Join(dataDir, "files"), Cache: filepath.Join(dataDir, "cache"), Classifier: classifier,
 	})
@@ -109,6 +105,27 @@ func healthcheck() int {
 		return 1
 	}
 	return 0
+}
+
+// newClassifier sets up the optional suggestions: a chat model through
+// an OpenAI-compatible API (DOCVAULT_LLM_*), or any URL that takes the
+// input as JSON (DOCVAULT_CLASSIFIER_URL).
+func newClassifier() process.Classifier {
+	if key := os.Getenv("DOCVAULT_LLM_KEY"); key != "" {
+		model := os.Getenv("DOCVAULT_LLM_MODEL")
+		if model == "" {
+			slog.Warn("DOCVAULT_LLM_KEY is set but DOCVAULT_LLM_MODEL isn't; suggestions are off")
+			return nil
+		}
+		llm := process.NewLLM(os.Getenv("DOCVAULT_LLM_URL"), key, model)
+		slog.Info("suggestions on: masked text goes to a chat model", "url", llm.URL, "model", model)
+		return llm
+	}
+	if u := os.Getenv("DOCVAULT_CLASSIFIER_URL"); u != "" {
+		slog.Info("suggestions on: masked text goes to the classifier", "url", u)
+		return process.NewHook(u, os.Getenv("DOCVAULT_CLASSIFIER_TOKEN"))
+	}
+	return nil
 }
 
 // foyerURL is HOMEPAGE_URL, the link back to Foyer in the header, when
