@@ -40,7 +40,7 @@ type Options struct {
 	// thumbnails), which can be rebuilt.
 	Files, Cache string
 	// Classifier, when set, suggests a category and tags for each document.
-	Classifier *Classifier
+	Classifier Classifier
 }
 
 type Processor struct {
@@ -146,7 +146,10 @@ func (p *Processor) process(ctx context.Context, job *store.Job) store.JobResult
 		res.Error = "thumbnail: " + err.Error()
 	}
 
-	if !job.ForceOCR {
+	if !job.ForceOCR && job.TextSource == "ocr" && job.Text != "" {
+		// OCR'd before: keep that text (Run OCR again forces a new one).
+		res.Text, res.TextSource, res.OCRLang = job.Text, "ocr", job.OCRLang
+	} else if !job.ForceOCR {
 		out, err := run(ctx, "pdftotext", "-enc", "UTF-8", "-layout", pdf, "-")
 		if err != nil {
 			res.Error = join(res.Error, "text: "+err.Error())
@@ -169,13 +172,28 @@ func (p *Processor) process(ctx context.Context, job *store.Job) store.JobResult
 	}
 
 	if p.Classifier != nil && ctx.Err() == nil {
-		sg, err := p.Classifier.Classify(ctx, p.Store, job, res.Text)
-		if err != nil {
-			slog.Warn("classifier", "document", job.ID, "err", err)
-		}
-		res.Suggestion = sg
+		p.classify(ctx, job, &res)
 	}
 	return res
+}
+
+func (p *Processor) classify(ctx context.Context, job *store.Job, res *store.JobResult) {
+	in, people, err := buildInput(ctx, p.Store, job, res.Text)
+	if err != nil {
+		res.ClassifyError = err.Error()
+		return
+	}
+	res.ClassifierInput = in.InputText()
+	sg, err := p.Classifier.Classify(ctx, in)
+	if err != nil {
+		if ctx.Err() == nil {
+			slog.Warn("classifier", "document", job.ID, "err", err)
+			res.ClassifyError = err.Error()
+		}
+		return
+	}
+	res.Classified = true
+	res.Suggestion = Sanitize(*sg, in, people)
 }
 
 func join(a, b string) string {

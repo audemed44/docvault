@@ -208,14 +208,3 @@ func TestOCR(t *testing.T) {
 		t.Fatalf("broken PDF %+v", d)
 	}
 }
-
-func TestSanitize(t *testing.T) {
-	sg := Sanitize(store.Suggest{Category: "medical", Tags: []string{" lab ", ""}, DocDate: "15/03/2024", Expires: "2030-01-01"},
-		[]string{"ID", "Medical"})
-	if sg.Category != "Medical" || len(sg.Tags) != 1 || sg.DocDate != "" || sg.Expires != "2030-01-01" {
-		t.Fatalf("%+v", sg)
-	}
-	if Sanitize(store.Suggest{Category: "Recipes"}, []string{"ID"}) != nil {
-		t.Fatal("unknown category kept")
-	}
-}

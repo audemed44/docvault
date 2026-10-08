@@ -11,90 +11,108 @@ import (
 	"strings"
 	"time"
 
+	"github.com/audemed44/docvault/internal/mask"
 	"github.com/audemed44/docvault/internal/store"
 )
 
-// Classifier asks an outside service (DOCVAULT_CLASSIFIER_URL) to suggest
-// a title, category, tags and dates for a document from its text. The
-// contract is in the README: Docvault POSTs ClassifyRequest and reads a
-// store.Suggest back. Suggestions are only shown, never applied by
-// themselves. Whatever the URL points at sees the document's text, so a
-// local model keeps everything on the server.
-type Classifier struct {
-	URL   string
-	Token string // sent as a bearer token when set
-	HTTP  *http.Client
+// A Classifier suggests a title, category, tags and dates for a document.
+// It only ever sees masked text (package mask), and only picks from the
+// categories and tags it's given; Sanitize drops anything else. Its
+// suggestions are shown on the document, never applied by themselves.
+type Classifier interface {
+	Classify(ctx context.Context, in Input) (*store.Suggest, error)
+	// Name says what's on, for the settings page.
+	Name() string
 }
 
-// maxClassifyText is how much of the text the classifier gets.
-const maxClassifyText = 24 << 10
-
-type ClassifyRequest struct {
-	DocumentID int64    `json:"document_id"`
-	Title      string   `json:"title"`
-	Text       string   `json:"text"`
-	Categories []string `json:"categories"`
-	Tags       []string `json:"tags"` // tags already in use, to prefer
+// Input is everything a classifier gets.
+type Input struct {
+	DocumentID int64  `json:"document_id"`
+	Title      string `json:"title"` // masked
+	Text       string `json:"text"`  // masked, at most maxClassifyText
+	// Categories, in order, with the tags usually filed under each.
+	Categories []CategoryTags `json:"categories"`
+	// Tags are every tag it may suggest: the vocabulary, and the people as
+	// their placeholders (turned back into names here).
+	Tags []string `json:"tags"`
+	// People are the family's placeholders, "[person:1]" and on: the names
+	// themselves are never sent.
+	People []string `json:"people"`
 }
 
-func NewClassifier(url, token string) *Classifier {
-	return &Classifier{URL: url, Token: token, HTTP: &http.Client{Timeout: 2 * time.Minute}}
+type CategoryTags struct {
+	Name string   `json:"name"`
+	Tags []string `json:"tags"`
 }
 
-func (c *Classifier) Classify(ctx context.Context, st *store.Store, job *store.Job, text string) (*store.Suggest, error) {
+// maxClassifyText is how much of the text is sent: the start of a
+// document says what it is.
+const maxClassifyText = 12 << 10
+
+// buildInput masks the document and gathers the choices.
+func buildInput(ctx context.Context, st *store.Store, job *store.Job, text string) (Input, []mask.Person, error) {
+	set, err := st.Settings(ctx)
+	if err != nil {
+		return Input{}, nil, err
+	}
 	cats, err := st.Categories(ctx, 0)
 	if err != nil {
-		return nil, err
+		return Input{}, nil, err
 	}
-	tags, err := st.TagNames(ctx)
+	vocab, err := st.TagVocab(ctx)
 	if err != nil {
-		return nil, err
+		return Input{}, nil, err
 	}
-	req := ClassifyRequest{DocumentID: job.ID, Title: job.Title, Text: text, Tags: tags}
-	if len(req.Text) > maxClassifyText {
-		req.Text = strings.ToValidUTF8(req.Text[:maxClassifyText], "")
+	opts := mask.Options{People: set.People, Words: set.MaskWords}
+	if len(text) > maxClassifyText {
+		text = strings.ToValidUTF8(text[:maxClassifyText], "")
+	}
+	in := Input{DocumentID: job.ID, Title: mask.Text(job.Title, opts), Text: mask.Text(text, opts),
+		Categories: []CategoryTags{}, Tags: []string{}, People: []string{}}
+	byCat := map[int64][]string{}
+	for _, t := range vocab {
+		byCat[t.CategoryID] = append(byCat[t.CategoryID], t.Name)
+		in.Tags = append(in.Tags, t.Name)
 	}
 	for _, c := range cats {
-		req.Categories = append(req.Categories, c.Name)
+		in.Categories = append(in.Categories, CategoryTags{Name: c.Name, Tags: append([]string{}, byCat[c.ID]...)})
 	}
-	body, _ := json.Marshal(req)
-	hreq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.URL, bytes.NewReader(body))
-	if err != nil {
-		return nil, err
+	if extra := byCat[0]; len(extra) > 0 {
+		in.Categories = append(in.Categories, CategoryTags{Name: "", Tags: extra})
 	}
-	hreq.Header.Set("Content-Type", "application/json")
-	if c.Token != "" {
-		hreq.Header.Set("Authorization", "Bearer "+c.Token)
+	for i := range set.People {
+		in.People = append(in.People, mask.Placeholder(i))
+		in.Tags = append(in.Tags, mask.Placeholder(i))
 	}
-	resp, err := c.HTTP.Do(hreq)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("classifier answered %s", resp.Status)
-	}
-	var sg store.Suggest
-	if err := json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&sg); err != nil {
-		return nil, fmt.Errorf("classifier answer: %w", err)
-	}
-	return Sanitize(sg, req.Categories), nil
+	return in, set.People, nil
 }
 
-// Sanitize keeps what's usable from a suggestion: a known category, valid
-// dates, and a few short tags.
-func Sanitize(sg store.Suggest, categories []string) *store.Suggest {
-	out := &store.Suggest{Title: strings.TrimSpace(sg.Title)}
-	if len(out.Title) > 200 {
-		out.Title = ""
+// InputText is how the input is shown under "What the classifier saw".
+func (in Input) InputText() string {
+	return "Title: " + in.Title + "\n\n" + in.Text
+}
+
+// Sanitize keeps what's usable from a suggestion: a known category, known
+// tags, valid dates, and a title without placeholders (people's are turned
+// back into their names).
+func Sanitize(sg store.Suggest, in Input, people []mask.Person) *store.Suggest {
+	out := &store.Suggest{}
+	if title, left := mask.Unmask(strings.TrimSpace(sg.Title), people); !left && len(title) <= 200 {
+		out.Title = title
 	}
-	if i := slices.IndexFunc(categories, func(c string) bool { return strings.EqualFold(c, strings.TrimSpace(sg.Category)) }); i >= 0 {
-		out.Category = categories[i]
+	for _, c := range in.Categories {
+		if c.Name != "" && strings.EqualFold(c.Name, strings.TrimSpace(sg.Category)) {
+			out.Category = c.Name
+		}
 	}
 	for _, t := range sg.Tags {
-		t = strings.TrimSpace(t)
-		if t != "" && len(t) <= 40 && len(out.Tags) < 8 {
-			out.Tags = append(out.Tags, t)
+		i := slices.IndexFunc(in.Tags, func(v string) bool { return strings.EqualFold(v, strings.TrimSpace(t)) })
+		if i < 0 {
+			continue
+		}
+		tag, left := mask.Unmask(in.Tags[i], people) // a person's placeholder: their name
+		if !left && !slices.Contains(out.Tags, tag) && len(out.Tags) < 8 {
+			out.Tags = append(out.Tags, tag)
 		}
 	}
 	if _, err := time.Parse(time.DateOnly, sg.DocDate); err == nil {
@@ -107,4 +125,43 @@ func Sanitize(sg store.Suggest, categories []string) *store.Suggest {
 		return nil
 	}
 	return out
+}
+
+// Hook is a classifier behind any URL (DOCVAULT_CLASSIFIER_URL): Docvault
+// POSTs the Input as JSON and reads a store.Suggest back.
+type Hook struct {
+	URL   string
+	Token string // sent as a bearer token when set
+	HTTP  *http.Client
+}
+
+func NewHook(url, token string) *Hook {
+	return &Hook{URL: url, Token: token, HTTP: &http.Client{Timeout: 2 * time.Minute}}
+}
+
+func (h *Hook) Name() string { return "hook" }
+
+func (h *Hook) Classify(ctx context.Context, in Input) (*store.Suggest, error) {
+	body, _ := json.Marshal(in)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, h.URL, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if h.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+h.Token)
+	}
+	resp, err := h.HTTP.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("classifier answered %s", resp.Status)
+	}
+	var sg store.Suggest
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&sg); err != nil {
+		return nil, fmt.Errorf("classifier answer: %w", err)
+	}
+	return &sg, nil
 }

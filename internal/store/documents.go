@@ -15,30 +15,33 @@ import (
 // Document is one stored file and what's known about it. Documents are
 // either in their owner's private library or in the shared Family space.
 type Document struct {
-	ID         int64     `json:"id"`
-	Family     bool      `json:"family"`
-	OwnerID    int64     `json:"owner_id,omitempty"`
-	AddedBy    string    `json:"added_by"`
-	Title      string    `json:"title"`
-	CategoryID int64     `json:"category_id"` // 0: uncategorised
-	Category   string    `json:"category"`
-	DocDate    string    `json:"doc_date"` // YYYY-MM-DD
-	Expires    string    `json:"expires"`  // YYYY-MM-DD or empty
-	Notes      string    `json:"notes"`
-	Tags       []string  `json:"tags"`
-	FileName   string    `json:"file_name"`
-	FilePath   string    `json:"-"` // relative to the files folder
-	Mime       string    `json:"mime"`
-	Size       int64     `json:"size"`
-	SHA256     string    `json:"sha256"`
-	Pages      int       `json:"pages"`
-	Status     string    `json:"status"` // pending, processing, ready or failed
-	Error      string    `json:"error,omitempty"`
-	TextSource string    `json:"text_source"` // "", "pdf" (its own text layer) or "ocr"
-	OCRLang    string    `json:"ocr_lang,omitempty"`
-	Suggestion *Suggest  `json:"suggestion,omitempty"`
-	Created    time.Time `json:"created"`
-	Updated    time.Time `json:"updated"`
+	ID         int64    `json:"id"`
+	Family     bool     `json:"family"`
+	OwnerID    int64    `json:"owner_id,omitempty"`
+	AddedBy    string   `json:"added_by"`
+	Title      string   `json:"title"`
+	CategoryID int64    `json:"category_id"` // 0: uncategorised
+	Category   string   `json:"category"`
+	DocDate    string   `json:"doc_date"` // YYYY-MM-DD
+	Expires    string   `json:"expires"`  // YYYY-MM-DD or empty
+	Notes      string   `json:"notes"`
+	Tags       []string `json:"tags"`
+	FileName   string   `json:"file_name"`
+	FilePath   string   `json:"-"` // relative to the files folder
+	Mime       string   `json:"mime"`
+	Size       int64    `json:"size"`
+	SHA256     string   `json:"sha256"`
+	Pages      int      `json:"pages"`
+	Status     string   `json:"status"` // pending, processing, ready or failed
+	Error      string   `json:"error,omitempty"`
+	TextSource string   `json:"text_source"` // "", "pdf" (its own text layer) or "ocr"
+	OCRLang    string   `json:"ocr_lang,omitempty"`
+	Suggestion *Suggest `json:"suggestion,omitempty"`
+	// Classified is when the classifier last looked at it (zero: never).
+	Classified    time.Time `json:"classified,omitzero"`
+	ClassifyError string    `json:"classify_error,omitempty"`
+	Created       time.Time `json:"created"`
+	Updated       time.Time `json:"updated"`
 	// Snippet is the matching text, with matches between \x02 and \x03
 	// (search results only).
 	Snippet string `json:"snippet,omitempty"`
@@ -60,7 +63,7 @@ func (s *Suggest) Empty() bool {
 
 const docCols = `d.id, d.owner_id, ifnull(a.name, ''), d.title, ifnull(d.category_id, 0), ifnull(c.name, ''),
 	d.doc_date, d.expires, d.notes, d.file_name, d.file_path, d.mime, d.size, d.sha256, d.pages,
-	d.status, d.error, d.text_source, d.ocr_lang, d.suggestion, d.created, d.updated,
+	d.status, d.error, d.text_source, d.ocr_lang, d.suggestion, d.classified, d.classify_error, d.created, d.updated,
 	(SELECT ifnull(group_concat(tag, char(31)), '') FROM (SELECT tag FROM document_tags t WHERE t.document_id = d.id ORDER BY tag))`
 
 const docFrom = ` FROM documents d
@@ -75,10 +78,10 @@ func scanDoc(row interface{ Scan(...any) error }, extra ...any) (*Document, erro
 	var d Document
 	var owner sql.NullInt64
 	var suggestion, tags string
-	var created, updated int64
+	var classified, created, updated int64
 	dest := []any{&d.ID, &owner, &d.AddedBy, &d.Title, &d.CategoryID, &d.Category,
 		&d.DocDate, &d.Expires, &d.Notes, &d.FileName, &d.FilePath, &d.Mime, &d.Size, &d.SHA256, &d.Pages,
-		&d.Status, &d.Error, &d.TextSource, &d.OCRLang, &suggestion, &created, &updated, &tags}
+		&d.Status, &d.Error, &d.TextSource, &d.OCRLang, &suggestion, &classified, &d.ClassifyError, &created, &updated, &tags}
 	if err := row.Scan(append(dest, extra...)...); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
@@ -87,7 +90,7 @@ func scanDoc(row interface{ Scan(...any) error }, extra ...any) (*Document, erro
 	}
 	d.Family = !owner.Valid
 	d.OwnerID = owner.Int64
-	d.Created, d.Updated = fromMS(created), fromMS(updated)
+	d.Created, d.Updated, d.Classified = fromMS(created), fromMS(updated), fromMS(classified)
 	d.Tags = []string{}
 	if tags != "" {
 		d.Tags = strings.Split(tags, "\x1f")
@@ -111,6 +114,17 @@ func (s *Store) DocumentText(ctx context.Context, userID, id int64) (string, err
 	var text string
 	err := s.db.QueryRowContext(ctx, `SELECT ifnull(f.body, '') FROM documents d
 		LEFT JOIN documents_fts f ON f.rowid = d.id WHERE d.id = ? AND `+visible, id, userID).Scan(&text)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	return text, err
+}
+
+// ClassifierInput is the masked text the classifier was last sent for a
+// document the user may see.
+func (s *Store) ClassifierInput(ctx context.Context, userID, id int64) (string, error) {
+	var text string
+	err := s.db.QueryRowContext(ctx, `SELECT d.classifier_input FROM documents d WHERE d.id = ? AND `+visible, id, userID).Scan(&text)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", ErrNotFound
 	}
@@ -298,8 +312,11 @@ type Filter struct {
 	Year     string
 	Expiring bool // only documents with an expiry date, soonest first
 	Status   string
-	Limit    int
-	Offset   int
+	// Suggested: with a classifier suggestion waiting. Unclassified:
+	// processed, but never seen by the classifier.
+	Suggested, Unclassified bool
+	Limit                   int
+	Offset                  int
 }
 
 // ftsQuery turns what someone typed into an FTS5 query: every word must
@@ -318,14 +335,11 @@ func ftsQuery(q string) string {
 	return strings.Join(words, " ")
 }
 
-// Search lists the documents a user may see that match the filter, with
-// the total count for paging.
-func (s *Store) Search(ctx context.Context, userID int64, f Filter) ([]Document, int, error) {
-	where := []string{visible}
-	args := []any{userID}
-	join := ""
-	order := "d.doc_date DESC, d.id DESC"
-	snippet := "''"
+func searchWhere(userID int64, f Filter) (where []string, args []any, join, order, snippet string) {
+	where = []string{visible}
+	args = []any{userID}
+	order = "d.doc_date DESC, d.id DESC"
+	snippet = "''"
 	if q := ftsQuery(f.Query); q != "" {
 		join = " JOIN documents_fts ON documents_fts.rowid = d.id"
 		where = append(where, "documents_fts MATCH ?")
@@ -363,6 +377,19 @@ func (s *Store) Search(ctx context.Context, userID int64, f Filter) ([]Document,
 		where = append(where, "d.status = ?")
 		args = append(args, f.Status)
 	}
+	if f.Suggested {
+		where = append(where, "d.suggestion != ''")
+	}
+	if f.Unclassified {
+		where = append(where, "d.classified = 0 AND d.status = 'ready'")
+	}
+	return where, args, join, order, snippet
+}
+
+// Search lists the documents a user may see that match the filter, with
+// the total count for paging.
+func (s *Store) Search(ctx context.Context, userID int64, f Filter) ([]Document, int, error) {
+	where, args, join, order, snippet := searchWhere(userID, f)
 	cond := " WHERE " + strings.Join(where, " AND ")
 
 	var total int
@@ -391,18 +418,41 @@ func (s *Store) Search(ctx context.Context, userID int64, f Filter) ([]Document,
 	return out, total, rows.Err()
 }
 
+// MatchingIDs lists every document the user may see that matches the
+// filter (for actions on all of them).
+func (s *Store) MatchingIDs(ctx context.Context, userID int64, f Filter) ([]int64, error) {
+	where, args, join, _, _ := searchWhere(userID, f)
+	rows, err := s.db.QueryContext(ctx, `SELECT d.id FROM documents d`+join+` WHERE `+strings.Join(where, " AND ")+` ORDER BY d.id`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 // Facets are the counts behind the library's filters.
 type Facets struct {
-	Total      int        `json:"total"`
-	Mine       int        `json:"mine"`
-	Family     int        `json:"family"`
-	Inbox      int        `json:"inbox"` // uncategorised
-	Expiring   int        `json:"expiring"`
-	Processing int        `json:"processing"`
-	Failed     int        `json:"failed"`
-	Categories []Category `json:"categories"`
-	Tags       []Count    `json:"tags"`
-	Years      []Count    `json:"years"`
+	Total      int `json:"total"`
+	Mine       int `json:"mine"`
+	Family     int `json:"family"`
+	Inbox      int `json:"inbox"` // uncategorised
+	Expiring   int `json:"expiring"`
+	Processing int `json:"processing"`
+	Failed     int `json:"failed"`
+	Suggested  int `json:"suggested"`
+	// Unclassified are processed documents the classifier hasn't seen.
+	Unclassified int        `json:"unclassified"`
+	Categories   []Category `json:"categories"`
+	Tags         []Count    `json:"tags"`
+	Years        []Count    `json:"years"`
 }
 
 type Count struct {
@@ -422,9 +472,11 @@ func (s *Store) Facets(ctx context.Context, userID int64) (*Facets, error) {
 		count(*) FILTER (WHERE d.category_id IS NULL),
 		count(*) FILTER (WHERE d.expires != '' AND d.expires <= ?),
 		count(*) FILTER (WHERE d.status IN ('pending', 'processing')),
-		count(*) FILTER (WHERE d.status = 'failed')
+		count(*) FILTER (WHERE d.status = 'failed'),
+		count(*) FILTER (WHERE d.suggestion != ''),
+		count(*) FILTER (WHERE d.classified = 0 AND d.status = 'ready')
 		FROM documents d WHERE `+visible, userID, soon, userID).
-		Scan(&f.Total, &f.Mine, &f.Family, &f.Inbox, &f.Expiring, &f.Processing, &f.Failed)
+		Scan(&f.Total, &f.Mine, &f.Family, &f.Inbox, &f.Expiring, &f.Processing, &f.Failed, &f.Suggested, &f.Unclassified)
 	if err != nil {
 		return nil, err
 	}
@@ -574,6 +626,10 @@ type Job struct {
 	ForceOCR bool
 	OCRLang  string
 	Title    string
+	// TextSource and Text are what an earlier run found, so OCR isn't
+	// repeated unless it's asked for.
+	TextSource string
+	Text       string
 }
 
 // JobResult is what processing found out.
@@ -583,7 +639,12 @@ type JobResult struct {
 	TextSource string
 	OCRLang    string
 	Error      string
-	Suggestion *Suggest
+	// Classified: the classifier answered, with Suggestion (maybe nil) for
+	// ClassifierInput. ClassifyError: it was asked, and failed.
+	Classified      bool
+	Suggestion      *Suggest
+	ClassifierInput string
+	ClassifyError   string
 }
 
 // ResetJobs puts documents that were being processed when the app stopped
@@ -598,10 +659,17 @@ func (s *Store) ClaimJob(ctx context.Context) (*Job, error) {
 	var j Job
 	err := s.db.QueryRowContext(ctx, `UPDATE documents SET status = 'processing', error = ''
 		WHERE id = (SELECT id FROM documents WHERE status = 'pending' ORDER BY id LIMIT 1)
-		RETURNING id, file_path, mime, force_ocr, ocr_lang, title`).
-		Scan(&j.ID, &j.FilePath, &j.Mime, &j.ForceOCR, &j.OCRLang, &j.Title)
+		RETURNING id, file_path, mime, force_ocr, ocr_lang, title, text_source`).
+		Scan(&j.ID, &j.FilePath, &j.Mime, &j.ForceOCR, &j.OCRLang, &j.Title, &j.TextSource)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	err = s.db.QueryRowContext(ctx, `SELECT ifnull(body, '') FROM documents_fts WHERE rowid = ?`, j.ID).Scan(&j.Text)
+	if errors.Is(err, sql.ErrNoRows) {
+		err = nil
 	}
 	return &j, err
 }
@@ -618,15 +686,23 @@ func (s *Store) FinishJob(ctx context.Context, id int64, r JobResult) error {
 		b, _ := json.Marshal(r.Suggestion)
 		suggestion = string(b)
 	}
+	var classified int64
+	if r.Classified {
+		classified = ms(time.Now())
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 	res, err := tx.ExecContext(ctx, `UPDATE documents SET status = ?, error = ?, pages = ?, text_source = ?,
-		ocr_lang = ?, force_ocr = 0, suggestion = CASE WHEN ? != '' THEN ? ELSE suggestion END
+		ocr_lang = ?, force_ocr = 0, classify_error = ?,
+		suggestion = CASE WHEN ? THEN ? ELSE suggestion END,
+		classified = CASE WHEN ? THEN ? ELSE classified END,
+		classifier_input = CASE WHEN ? != '' THEN ? ELSE classifier_input END
 		WHERE id = ? AND status = 'processing'`,
-		status, r.Error, r.Pages, r.TextSource, r.OCRLang, suggestion, suggestion, id)
+		status, r.Error, r.Pages, r.TextSource, r.OCRLang, r.ClassifyError,
+		r.Classified, suggestion, r.Classified, classified, r.ClassifierInput, r.ClassifierInput, id)
 	if err != nil {
 		return err
 	}
@@ -642,8 +718,9 @@ func (s *Store) FinishJob(ctx context.Context, id int64, r JobResult) error {
 // Requeue processes a document the user may see again, with OCR forced
 // when forceOCR is set (in lang, or the default when it's empty).
 func (s *Store) Requeue(ctx context.Context, userID, id int64, forceOCR bool, lang string) error {
-	res, err := s.db.ExecContext(ctx, `UPDATE documents SET status = 'pending', error = '', force_ocr = ?, ocr_lang = ?
-		WHERE id = ? AND (owner_id = ? OR owner_id IS NULL)`, forceOCR, lang, id, userID)
+	res, err := s.db.ExecContext(ctx, `UPDATE documents SET status = 'pending', error = '', force_ocr = ?,
+		ocr_lang = CASE WHEN ? THEN ? ELSE ocr_lang END
+		WHERE id = ? AND (owner_id = ? OR owner_id IS NULL)`, forceOCR, forceOCR, lang, id, userID)
 	if err != nil {
 		return err
 	}
