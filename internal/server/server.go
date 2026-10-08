@@ -20,7 +20,7 @@ import (
 type Options struct {
 	Store     *store.Store
 	Processor *process.Processor
-	Token     string // DOCVAULT_TOKEN: first-run setup and Foyer
+	Token     string // DOCVAULT_TOKEN: Foyer's key (empty: no Foyer card)
 	// DataDir holds files/ (the originals), cache/ (thumbnails and photo
 	// PDFs), import/ (folders to bulk import) and tmp/ (uploads in flight).
 	DataDir  string
@@ -53,10 +53,7 @@ func (s *Server) dir(name string) string { return filepath.Join(s.DataDir, name)
 
 func (s *Server) Handler() http.Handler {
 	api := http.NewServeMux()
-	api.HandleFunc("PUT /api/me", sessionOnly(s.updateMe))
-	api.HandleFunc("GET /api/tokens", sessionOnly(s.listTokens))
-	api.HandleFunc("POST /api/tokens", sessionOnly(s.createToken))
-	api.HandleFunc("DELETE /api/tokens/{id}", sessionOnly(s.deleteToken))
+	api.HandleFunc("PUT /api/me", s.updateMe)
 	api.HandleFunc("GET /api/users", adminOnly(s.listUsers))
 	api.HandleFunc("POST /api/users", adminOnly(s.saveUser))
 	api.HandleFunc("PUT /api/users/{id}", adminOnly(s.saveUser))
@@ -73,7 +70,7 @@ func (s *Server) Handler() http.Handler {
 
 	api.HandleFunc("POST /api/upload", s.upload)
 	api.HandleFunc("GET /api/import", s.importStatus)
-	api.HandleFunc("POST /api/import", sessionOnly(s.startImport))
+	api.HandleFunc("POST /api/import", s.startImport)
 	api.HandleFunc("GET /api/facets", s.facets)
 	api.HandleFunc("GET /api/documents", s.listDocuments)
 	api.HandleFunc("GET /api/documents/{id}", s.getDocument)

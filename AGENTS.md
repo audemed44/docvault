@@ -12,7 +12,7 @@ TypeScript frontend (`frontend/`), built into `web/dist` and embedded in
 the binary. State lives in SQLite at `/data/docvault.db` (`internal/store`);
 originals in `/data/files/<id>/`, derived files in `/data/cache/<id>/`.
 
-- `internal/server`: routes (`server.go`), accounts, sessions, API tokens
+- `internal/server`: routes (`server.go`), accounts, sessions
   and the same-origin guard (`auth.go`), ingestion shared by every way in
   (`ingest.go`), documents and the upload endpoint (`documents.go`),
   folder import (`import.go`), categories and settings (`settings.go`),
@@ -45,13 +45,16 @@ originals in `/data/files/<id>/`, derived files in `/data/cache/<id>/`.
   a person. Tests use a fake model server, never a real key.
 - Direct dependencies: modernc.org/sqlite (pure Go, so the build stays
   static and cgo-free). Justify any new one, Go or npm.
-- Every `/api/` call needs a signed-in user: a session cookie, or a
-  personal API token (`dv_…`, the iOS Shortcut) that can't touch account
-  settings. Users only see their own documents and the Family space, admins
-  included. `DOCVAULT_TOKEN` is not a user: it makes the first account and
-  is Foyer's key (`/api/foyer/*`). Secrets are stored hashed. State-changing
-  browser requests from another origin are refused (`sameOrigin`). Never
-  log or return secrets.
+- Every `/api/` call needs a user, and the username is the whole sign-in
+  (the user's choice: one family, reached only over Tailscale). No
+  passwords, no sign-up, no API tokens: the browser signs in with a
+  username and gets a session cookie; the iOS Shortcut and scripts send
+  `X-Docvault-User: <username>`. Admins add accounts; a fresh install makes
+  the first admin from the sign-in page. Users only see their own documents
+  and the Family space, admins included. `DOCVAULT_TOKEN` is not a user:
+  it's Foyer's optional key (`/api/foyer/*`). Sessions are stored hashed.
+  State-changing browser requests from another origin are refused
+  (`sameOrigin`). Never log or return secrets.
 - `GET /api/foyer/widget` serves the card in Foyer's widget format
   (https://github.com/audemed44/foyer/blob/main/docs/app-widgets.md).
 - `HOMEPAGE_URL` puts a link back to Foyer in the header, for admins

@@ -24,6 +24,7 @@ type Store struct {
 }
 
 const schema = `
+-- password is dropped by migration 6.
 CREATE TABLE IF NOT EXISTS users (
 	id       INTEGER PRIMARY KEY AUTOINCREMENT,
 	username TEXT NOT NULL UNIQUE COLLATE NOCASE,
@@ -37,15 +38,6 @@ CREATE TABLE IF NOT EXISTS sessions (
 	user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 	created INTEGER NOT NULL,
 	seen    INTEGER NOT NULL
-);
-CREATE TABLE IF NOT EXISTS api_tokens (
-	id      INTEGER PRIMARY KEY AUTOINCREMENT,
-	user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-	name    TEXT NOT NULL,
-	hash    TEXT NOT NULL UNIQUE,
-	hint    TEXT NOT NULL,
-	created INTEGER NOT NULL,
-	used    INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS categories (
 	id       INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -121,6 +113,9 @@ var migrations = []string{
 	`ALTER TABLE documents ADD COLUMN want_suggestion INTEGER NOT NULL DEFAULT 0`,
 	// 5: Travel and Work, and Banking becomes Banking & Investments.
 	moreCategories(),
+	// 6: the username is the sign-in: no passwords, no API tokens.
+	`DROP TABLE IF EXISTS api_tokens;
+	ALTER TABLE users DROP COLUMN password`,
 }
 
 // Open opens (or creates) the database.

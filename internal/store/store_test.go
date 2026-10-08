@@ -21,7 +21,7 @@ func open(t *testing.T) *Store {
 func addUser(t *testing.T, s *Store, name string) *User {
 	t.Helper()
 	u := &User{Username: name, Name: name}
-	if err := s.CreateUser(context.Background(), u, "hash"); err != nil {
+	if err := s.CreateUser(context.Background(), u); err != nil {
 		t.Fatal(err)
 	}
 	return u
