@@ -19,7 +19,11 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /docvault ./cmd/docvaul
 
 # ── Runtime ─────────────────────────────────────────────────────────────────
 FROM alpine:3.23
-RUN apk add --no-cache ca-certificates \
+# poppler (page count, thumbnails, text layers), tesseract with English and
+# Hindi (OCR), libheif (iPhone HEIC photos), and a font so PDFs that don't
+# embed theirs still render. They run only as short background jobs.
+RUN apk add --no-cache ca-certificates poppler-utils tesseract-ocr tesseract-ocr-data-eng \
+        tesseract-ocr-data-hin libheif-tools font-dejavu \
     && adduser -D -H -u 1000 -s /sbin/nologin docvault \
     && mkdir -p /data && chown 1000:1000 /data
 # In PATH, so `docker exec docvault docvault <command>` works.

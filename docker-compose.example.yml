@@ -6,13 +6,18 @@ services:
     restart: unless-stopped
     user: "1000:1000"
     environment:
-      # openssl rand -hex 32; what you sign in with, and Foyer's widget key.
+      # openssl rand -hex 32; creates the first account, and is Foyer's widget key.
       - DOCVAULT_TOKEN=${DOCVAULT_TOKEN}
       - TZ=Asia/Kolkata
       # Optional: Foyer's address, linked from the header.
       # - HOMEPAGE_URL=https://home.example.com
+      # Optional: a service that suggests categories and tags (see README).
+      # Everything it's sent leaves Docvault, so point it at a local model.
+      # - DOCVAULT_CLASSIFIER_URL=http://classifier:8000/classify
     volumes:
       - ./docvault:/data
     ports:
       - "8090:8080"
-    mem_limit: 64m
+    # The server idles at ~25 MB. OCR runs tesseract one page at a time at
+    # 300 dpi, which peaks around 460 MB for a few seconds per page.
+    mem_limit: 768m
