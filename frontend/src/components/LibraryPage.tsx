@@ -1,4 +1,4 @@
-import { Plus, Search, X } from "lucide-preact";
+import { Plus, Search, Sparkles, X } from "lucide-preact";
 import { useEffect, useState } from "preact/hooks";
 import { api } from "../api";
 import { useData } from "../hooks";
@@ -13,7 +13,7 @@ import {
   Snippet,
   StatusChip,
 } from "./docs";
-import { Empty, ErrorNote, Figure } from "./ui";
+import { Empty, ErrorNote, Figure, useAction } from "./ui";
 import { UploadDialog } from "./UploadDialog";
 
 const EMPTY: Filter = {
@@ -24,6 +24,8 @@ const EMPTY: Filter = {
   year: "",
   expiring: false,
   status: "",
+  suggested: false,
+  unclassified: false,
 };
 
 // Kept between visits, so coming back from a document keeps the search.
@@ -38,6 +40,7 @@ export function LibraryPage(props: { user: User }) {
   const [uploading, setUploading] = useState<File[] | null>(null);
   const [dragging, setDragging] = useState(false);
   const facets = useData(api.facets, 15_000);
+  const settings = useData(api.settings);
 
   const setFilter = (f: Filter) => {
     lastFilter = f;
@@ -157,6 +160,15 @@ export function LibraryPage(props: { user: User }) {
       </div>
 
       <Filters facets={f} filter={filter} onChange={setFilter} />
+      {f && (
+        <SuggestionBar
+          facets={f}
+          filter={filter}
+          classifierOn={!!settings.data?.classifier}
+          onFilter={setFilter}
+          onChanged={reloadAll}
+        />
+      )}
 
       {docs.error && <ErrorNote>{docs.error}</ErrorNote>}
 
@@ -287,11 +299,102 @@ function Filters(props: { facets: Facets | null; filter: Filter; onChange: (f: F
           With expiry dates <X size={11} />
         </button>
       )}
+      {filter.suggested && (
+        <button class="chip chip-accent chip-button" onClick={() => set({ suggested: false })}>
+          With suggestions <X size={11} />
+        </button>
+      )}
+      {filter.unclassified && (
+        <button class="chip chip-accent chip-button" onClick={() => set({ unclassified: false })}>
+          Without suggestions <X size={11} />
+        </button>
+      )}
       {filter.status && (
         <button class="chip chip-bad chip-button" onClick={() => set({ status: "" })}>
           {filter.status} <X size={11} />
         </button>
       )}
+    </div>
+  );
+}
+
+/**
+ * Suggestions waiting (review them, or apply all that match the filter),
+ * and documents the classifier hasn't seen (ask for suggestions).
+ */
+function SuggestionBar(props: {
+  facets: Facets;
+  filter: Filter;
+  classifierOn: boolean;
+  onFilter: (f: Filter) => void;
+  onChanged: () => void;
+}) {
+  const { facets: f, filter } = props;
+  const { busy, error, run } = useAction();
+  const [done, setDone] = useState("");
+  if (!f.suggested && !(props.classifierOn && f.unclassified) && !done) return null;
+  const scope = { ...filter, suggested: true, unclassified: false };
+  return (
+    <div class="note note-accent suggestion-bar">
+      <Sparkles size={15} class="tone-accent" />
+      <div class="suggestion-bar-text">
+        {f.suggested > 0 && <span>{plural(f.suggested, "suggestion")} waiting.</span>}
+        {props.classifierOn && f.unclassified > 0 && (
+          <span>{plural(f.unclassified, "document")} without suggestions yet.</span>
+        )}
+        {done && <span class="tone-good">{done}</span>}
+        {error && <span class="form-error">{error}</span>}
+      </div>
+      <div class="toolbar">
+        {f.suggested > 0 && !filter.suggested && (
+          <button
+            class="btn btn-small"
+            onClick={() => props.onFilter({ ...filter, suggested: true })}
+          >
+            Review
+          </button>
+        )}
+        {f.suggested > 0 && filter.suggested && (
+          <button
+            class="btn btn-primary btn-small"
+            disabled={busy}
+            onClick={() =>
+              run(async () => {
+                if (
+                  !confirm(
+                    "Apply every suggestion in this list? Titles, categories, dates and tags change.",
+                  )
+                ) {
+                  return;
+                }
+                const r = await api.applySuggestions(scope);
+                setDone(`Applied ${plural(r.applied, "suggestion")}.`);
+                props.onFilter({ ...filter, suggested: false });
+                props.onChanged();
+              })
+            }
+          >
+            Apply all
+          </button>
+        )}
+        {props.classifierOn && f.unclassified > 0 && (
+          <button
+            class="btn btn-small"
+            disabled={busy}
+            onClick={() =>
+              run(async () => {
+                const r = await api.requestSuggestions({ unclassified: true });
+                setDone(
+                  `Asked for ${plural(r.queued, "suggestion")}; they arrive as each is read.`,
+                );
+                props.onChanged();
+              })
+            }
+          >
+            Get suggestions
+          </button>
+        )}
+      </div>
     </div>
   );
 }

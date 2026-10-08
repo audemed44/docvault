@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/audemed44/docvault/internal/mask"
 	"github.com/audemed44/docvault/internal/process"
 	"github.com/audemed44/docvault/internal/store"
 )
@@ -56,8 +57,9 @@ type settingsInfo struct {
 	store.Settings
 	// Languages are the installed OCR languages.
 	Languages []string `json:"languages"`
-	// Classifier says whether DOCVAULT_CLASSIFIER_URL is set.
-	Classifier bool `json:"classifier"`
+	// Classifier is what suggests ("llm:<model>" or "hook"), or "" when
+	// suggestions are off.
+	Classifier string `json:"classifier"`
 }
 
 func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
@@ -70,7 +72,11 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 	if langs == nil {
 		langs = []string{}
 	}
-	writeJSON(w, http.StatusOK, settingsInfo{Settings: set, Languages: langs, Classifier: s.Processor.Classifier != nil})
+	info := settingsInfo{Settings: set, Languages: langs}
+	if c := s.Processor.Classifier; c != nil {
+		info.Classifier = c.Name()
+	}
+	writeJSON(w, http.StatusOK, info)
 }
 
 func (s *Server) saveSettings(w http.ResponseWriter, r *http.Request) {
@@ -88,9 +94,90 @@ func (s *Server) saveSettings(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "the Shortcut link must be an https:// address")
 		return
 	}
+	people := []mask.Person{}
+	for _, p := range set.People {
+		p.Name = strings.Join(strings.Fields(p.Name), " ")
+		if p.Name == "" {
+			continue
+		}
+		aliases := []string{}
+		for _, a := range p.Aliases {
+			if a = strings.Join(strings.Fields(a), " "); a != "" && len(a) <= 80 {
+				aliases = append(aliases, a)
+			}
+		}
+		if len(p.Name) > 40 || len(aliases) > 20 {
+			writeError(w, http.StatusBadRequest, "a person's name is too long, or has too many other names")
+			return
+		}
+		people = append(people, mask.Person{Name: p.Name, Aliases: aliases})
+	}
+	words := []string{}
+	for _, w := range set.MaskWords {
+		if w = strings.Join(strings.Fields(w), " "); w != "" && len(w) <= 80 {
+			words = append(words, w)
+		}
+	}
+	if len(people) > 30 || len(words) > 200 {
+		writeError(w, http.StatusBadRequest, "too many people or words to mask")
+		return
+	}
+	set.People, set.MaskWords = people, words
 	if err := s.Store.SaveSettings(r.Context(), set); err != nil {
 		storeError(w, err)
 		return
 	}
 	s.getSettings(w, r)
+}
+
+// maskPreview shows what text looks like once masked with the current
+// settings, before anything is sent anywhere.
+func (s *Server) maskPreview(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Text string `json:"text"`
+	}
+	if !readJSON(w, r, 256<<10, &body) {
+		return
+	}
+	set, err := s.Store.Settings(r.Context())
+	if err != nil {
+		storeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{
+		"text": mask.Text(body.Text, mask.Options{People: set.People, Words: set.MaskWords}),
+	})
+}
+
+func (s *Server) listTagVocab(w http.ResponseWriter, r *http.Request) {
+	tags, err := s.Store.TagVocab(r.Context())
+	if err != nil {
+		storeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, tags)
+}
+
+// saveTagVocab replaces the tags the classifier may suggest.
+func (s *Server) saveTagVocab(w http.ResponseWriter, r *http.Request) {
+	var tags []store.VocabTag
+	if !readJSON(w, r, 64<<10, &tags) {
+		return
+	}
+	for i := range tags {
+		tags[i].Name = strings.Join(strings.Fields(strings.TrimPrefix(strings.TrimSpace(tags[i].Name), "#")), " ")
+		if n := tags[i].Name; n == "" || len(n) > 40 {
+			writeError(w, http.StatusBadRequest, "tags need 1–40 characters")
+			return
+		}
+	}
+	if err := s.Store.SaveTagVocab(r.Context(), tags); err != nil {
+		if errors.Is(err, store.ErrConflict) {
+			writeError(w, http.StatusConflict, "a tag is listed twice: "+strings.TrimPrefix(err.Error(), store.ErrConflict.Error()+": "))
+			return
+		}
+		storeError(w, err)
+		return
+	}
+	s.listTagVocab(w, r)
 }

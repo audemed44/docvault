@@ -4,6 +4,7 @@ import { api } from "../api";
 import { useData } from "../hooks";
 import { ago, langName, plural } from "../lib";
 import type { APIToken, Category, Settings, User } from "../types";
+import { MaskingSection, TagsSection } from "./SuggestSettings";
 import { CopyField, Dialog, Empty, ErrorNote, Field, SectionHead, useAction } from "./ui";
 
 export function SettingsPage(props: { user: User; onUser: (u: User) => void }) {
@@ -20,6 +21,15 @@ export function SettingsPage(props: { user: User; onUser: (u: User) => void }) {
       <AccountSection index={++n} user={user} onUser={props.onUser} />
       {user.admin && <PeopleSection index={++n} me={user} />}
       {user.admin && <CategoriesSection index={++n} />}
+      {user.admin && <TagsSection index={++n} />}
+      {user.admin && settings.data && (
+        <MaskingSection
+          key={JSON.stringify([settings.data.people, settings.data.mask_words])}
+          index={++n}
+          settings={settings.data}
+          onSaved={settings.setData}
+        />
+      )}
       {user.admin && settings.data && (
         <ProcessingSection index={++n} settings={settings.data} onSaved={settings.setData} />
       )}
@@ -475,7 +485,15 @@ function ProcessingSection(props: {
         class="form form-narrow"
         onSubmit={(e) => {
           e.preventDefault();
-          run(async () => props.onSaved(await api.saveSettings(s)));
+          run(async () =>
+            props.onSaved(
+              await api.saveSettings({
+                ...props.settings,
+                ocr_langs: s.ocr_langs,
+                shortcut_url: s.shortcut_url,
+              }),
+            ),
+          );
         }}
       >
         <Field
@@ -502,21 +520,6 @@ function ProcessingSection(props: {
             value={s.shortcut_url}
             onInput={(e) => setS({ ...s, shortcut_url: e.currentTarget.value })}
           />
-        </Field>
-        <Field label="Suggestions">
-          <span class="muted">
-            {s.classifier ? (
-              <>
-                On: each document's text goes to <code>DOCVAULT_CLASSIFIER_URL</code>, and its
-                suggested category, tags and dates show on the document to apply.
-              </>
-            ) : (
-              <>
-                Off. Set <code>DOCVAULT_CLASSIFIER_URL</code> to a service (ideally a local model)
-                to get suggested categories, tags and dates.
-              </>
-            )}
-          </span>
         </Field>
         {error && <div class="form-error">{error}</div>}
         {dirty && (
