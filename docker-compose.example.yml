@@ -19,5 +19,6 @@ services:
     ports:
       - "8090:8080"
     # The server idles at ~25 MB. OCR runs tesseract one page at a time at
-    # 300 dpi, which peaks around 460 MB for a few seconds per page.
+    # 300 dpi, which peaks around 460 MB for a few seconds per page. For a
+    # big import, DOCVAULT_WORKERS=3 with mem_limit: 1536m is ~3x faster.
     mem_limit: 768m

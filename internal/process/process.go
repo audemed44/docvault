@@ -41,6 +41,9 @@ type Options struct {
 	Files, Cache string
 	// Classifier, when set, suggests a category and tags for each document.
 	Classifier Classifier
+	// Workers is how many documents are processed at once (at least 1).
+	// Each OCR peaks around 460 MB.
+	Workers int
 }
 
 type Processor struct {
@@ -52,7 +55,7 @@ func New(o Options) *Processor {
 	return &Processor{Options: o, wake: make(chan struct{}, 1)}
 }
 
-// Wake tells the worker there's something new in the queue.
+// Wake tells a worker there's something new in the queue.
 func (p *Processor) Wake() {
 	select {
 	case p.wake <- struct{}{}:
@@ -65,6 +68,16 @@ func (p *Processor) Run(ctx context.Context) {
 	if err := p.Store.ResetJobs(ctx); err != nil {
 		slog.Error("processing: reset the queue", "err", err)
 	}
+	var wg sync.WaitGroup
+	for range max(p.Workers, 1) {
+		wg.Go(func() { p.work(ctx) })
+	}
+	wg.Wait()
+}
+
+// work takes documents from the queue one at a time. Claiming is atomic, so
+// workers never get the same one.
+func (p *Processor) work(ctx context.Context) {
 	for {
 		for ctx.Err() == nil {
 			job, err := p.Store.ClaimJob(ctx)
@@ -75,6 +88,7 @@ func (p *Processor) Run(ctx context.Context) {
 				slog.Error("processing: next job", "err", err)
 				break
 			}
+			p.Wake() // another idle worker may take the next one
 			start := time.Now()
 			res := p.process(ctx, job)
 			if ctx.Err() != nil {

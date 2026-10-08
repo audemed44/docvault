@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -61,6 +62,7 @@ func main() {
 	classifier := newClassifier()
 	proc := process.New(process.Options{
 		Store: db, Files: filepath.Join(dataDir, "files"), Cache: filepath.Join(dataDir, "cache"), Classifier: classifier,
+		Workers: workers(),
 	})
 	app, err := server.New(server.Options{
 		Store: db, Processor: proc, Token: token, DataDir: dataDir, FoyerURL: foyerURL(), Web: dist,
@@ -133,4 +135,14 @@ func foyerURL() string {
 		return ""
 	}
 	return u
+}
+
+// workers is DOCVAULT_WORKERS: how many documents are processed at once
+// (1–8). Each OCR peaks around 460 MB, so raise mem_limit with it.
+func workers() int {
+	n, err := strconv.Atoi(os.Getenv("DOCVAULT_WORKERS"))
+	if err != nil || n < 1 {
+		return 1
+	}
+	return min(n, 8)
 }
