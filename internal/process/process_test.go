@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/audemed44/docvault/internal/store"
 )
@@ -208,3 +209,44 @@ func TestOCR(t *testing.T) {
 		t.Fatalf("broken PDF %+v", d)
 	}
 }
+
+// Several workers share the queue: every document is processed once.
+func TestWorkers(t *testing.T) {
+	p, st, u := setup(t)
+	p.Workers = 3
+	ctx := context.Background()
+	var ids []int64
+	for i := range 9 {
+		name := fmt.Sprintf("doc%d.pdf", i)
+		d := &store.Document{OwnerID: u.ID, Title: name, DocDate: "2024-01-01", FileName: name, Mime: "application/pdf", SHA256: name}
+		if err := st.CreateDocument(ctx, d, u.ID); err != nil {
+			t.Fatal(err)
+		}
+		os.MkdirAll(filepath.Join(p.Files, fmt.Sprint(d.ID)), 0o755)
+		os.WriteFile(filepath.Join(p.Files, fmt.Sprint(d.ID), name), textPDF(name), 0o644)
+		st.SetFilePath(ctx, d.ID, filepath.Join(fmt.Sprint(d.ID), name))
+		ids = append(ids, d.ID)
+	}
+	run, stop := context.WithCancel(ctx)
+	done := make(chan struct{})
+	go func() { p.Run(run); close(done) }()
+	deadline := time.Now().Add(30 * time.Second)
+	for _, id := range ids {
+		for {
+			d, err := st.Document(ctx, u.ID, id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if d.Status == "ready" || d.Status == "failed" { // failed without poppler
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("document %d is still %s", id, d.Status)
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+	}
+	stop()
+	<-done
+}
+
