@@ -283,7 +283,7 @@ export function MaskingSection(props: {
 
         <Field
           label="Try it"
-          hint="Paste text from a document to see what would be sent. Nothing leaves the server."
+          hint="Paste text from a document to see what would be sent. Nothing leaves the server. Document names skip the “Name:”, “Address:” rule."
         >
           <textarea
             class="input textarea"

@@ -108,3 +108,22 @@ func TestUnmask(t *testing.T) {
 		t.Fatal("placeholder not reported")
 	}
 }
+
+func TestTitle(t *testing.T) {
+	o := Options{People: []Person{{Name: "Pranav", Aliases: []string{"Dad", "Papa"}}, {Name: "Vritika"}}, Words: []string{"Sample"}}
+	for in, want := range map[string]string{
+		"Address proof Pune":          "Address proof Pune",
+		"Name change affidavit":       "Name change affidavit",
+		"Nominee form LIC":            "Nominee form LIC",
+		"DOB certificate Vritika":     "DOB certificate [person:2]",
+		"Dad passport 2019":           "[person:1] passport 2019",
+		"PAN ABCPS1234K Papa":         "PAN [pan] [person:1]",
+		"Policy 448812 FY 2025-26":    "Policy [number] FY 2025-26",
+		"Sample house deed":           "[masked] house deed",
+		"CamScanner 03-15-2021 10.22": "CamScanner 03-15-2021 10.22",
+	} {
+		if got := Title(in, o); got != want {
+			t.Errorf("Title(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

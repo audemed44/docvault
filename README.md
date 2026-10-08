@@ -119,7 +119,9 @@ Nothing changes until someone applies it.
   addresses and birth dates ("Name:", "S/O", "Address:", "DOB:"), the
   family's names (Settings → Suggestions: they become `[person:1]`…, so
   no names leave the server) and any other words you list. Dates and
-  amounts are kept. It's a strong reduction, not anonymisation:
+  amounts are kept. Document names get the same treatment except the
+  labelled-line rule, so "Address proof Pune" stays as it is while
+  "Dad passport" becomes "[person:1] passport". It's a strong reduction, not anonymisation:
   unlabelled names and addresses, and what a document is about, still go
   through. **What the classifier saw** on each document shows exactly what
   was sent, and Settings has a box to try the masking on any text.

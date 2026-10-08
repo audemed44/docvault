@@ -62,12 +62,21 @@ var (
 	confusable = regexp.MustCompile(`\b[0-9OoIlSB]{6,}\b`)
 )
 
-// Text masks text.
-func Text(text string, o Options) string {
+// Text masks a document's text.
+func Text(text string, o Options) string { return apply(text, o, true) }
+
+// Title masks a document's name. It skips the labelled-line rule, which is
+// for text like "Name: …" and would eat names like "Address proof Pune"
+// or "Name change affidavit"; people, numbers and words are still masked.
+func Title(title string, o Options) string { return apply(title, o, false) }
+
+func apply(text string, o Options, labels bool) string {
 	text = maskPeople(text, o.People)
 	text = maskWords(text, o.Words)
 	text = email.ReplaceAllString(text, "[email]")
-	text = maskLabelled(text)
+	if labels {
+		text = maskLabelled(text)
+	}
 	// Identifiers as read, then again once OCR's misread digits are fixed.
 	text = maskIDs(text)
 	text = maskIDs(fixConfusables(text))
