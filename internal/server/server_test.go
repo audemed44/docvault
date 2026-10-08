@@ -353,7 +353,7 @@ func TestCategoriesAndSettings(t *testing.T) {
 	me, dad := x.setup()
 	var names []string
 	x.json(x.do("GET", "/api/categories?format=names", "", dad), 200, &names)
-	if len(names) != len(store.DefaultCategories)+1 || names[0] != "ID" || names[8] != "Banking" {
+	if len(names) != len(store.DefaultCategories)+3 || names[0] != "ID" || names[8] != "Banking & Investments" || names[11] != "Other" {
 		t.Fatalf("names %v", names)
 	}
 	x.json(x.do("PUT", "/api/categories", `[{"name":"ID"}]`, dad), 403, nil)
@@ -447,7 +447,7 @@ func TestSuggestions(t *testing.T) {
 	for range 2 {
 		job, _ := x.s.Store.ClaimJob(ctx)
 		x.s.Store.FinishJob(ctx, job.ID, store.JobResult{Pages: 1, TextSource: "pdf", Text: "text", Classified: true,
-			ClassifierInput: "Title: a\n\ntext", Suggestion: &store.Suggest{Title: "Renamed", Category: "Banking", Tags: []string{"fd"}, NewTags: []string{"locker"}}})
+			ClassifierInput: "Title: a\n\ntext", Suggestion: &store.Suggest{Title: "Renamed", Category: "Banking & Investments", Tags: []string{"fd"}, NewTags: []string{"locker"}}})
 	}
 	var facets store.Facets
 	x.json(x.do("GET", "/api/facets", "", me), 200, &facets)
@@ -470,7 +470,7 @@ func TestSuggestions(t *testing.T) {
 		t.Fatal("still in the inbox")
 	}
 	x.json(x.do("GET", "/api/documents?q=renamed", "", me), 200, &list)
-	if len(list.Documents) != 2 || list.Documents[0].Category != "Banking" || strings.Join(list.Documents[0].Tags, ",") != "fd,locker" ||
+	if len(list.Documents) != 2 || list.Documents[0].Category != "Banking & Investments" || strings.Join(list.Documents[0].Tags, ",") != "fd,locker" ||
 		list.Documents[0].Suggestion != nil {
 		t.Fatalf("after apply %+v", list.Documents)
 	}

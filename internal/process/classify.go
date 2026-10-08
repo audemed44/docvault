@@ -79,6 +79,11 @@ func buildInput(ctx context.Context, st *store.Store, job *store.Job, text strin
 		in.Tags = append(in.Tags, t.Name)
 	}
 	for _, c := range cats {
+		if strings.EqualFold(c.Name, OtherCategory) {
+			// Never suggested: unsure means it stays in the Inbox, to sort.
+			byCat[0] = append(byCat[0], byCat[c.ID]...)
+			continue
+		}
 		in.Categories = append(in.Categories, CategoryTags{Name: c.Name, Tags: append([]string{}, byCat[c.ID]...)})
 	}
 	if extra := byCat[0]; len(extra) > 0 {
@@ -101,6 +106,10 @@ func buildInput(ctx context.Context, st *store.Store, job *store.Job, text strin
 	}
 	return in, set, nil
 }
+
+// OtherCategory is never suggested: a document the model can't place stays
+// in the Inbox, where it gets looked at, instead of disappearing into Other.
+const OtherCategory = "Other"
 
 // InputText is how the input is shown under "What the classifier saw".
 func (in Input) InputText() string {

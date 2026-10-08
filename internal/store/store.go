@@ -119,6 +119,8 @@ var migrations = []string{
 	seedVocab(),
 	// 4: someone asked for a suggestion (sent with the next processing).
 	`ALTER TABLE documents ADD COLUMN want_suggestion INTEGER NOT NULL DEFAULT 0`,
+	// 5: Travel and Work, and Banking becomes Banking & Investments.
+	moreCategories(),
 }
 
 // Open opens (or creates) the database.

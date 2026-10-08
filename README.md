@@ -128,6 +128,9 @@ Nothing changes until someone applies it.
 - **Your categories and tags** come back as they are: the request carries
   a JSON schema listing them, and anything else in those fields is dropped
   (Settings → Tags manages the list; people are tags too).
+- **Never "Other"**: a document the model can't place gets no category,
+  so it stays in the Inbox to sort by hand instead of disappearing into
+  Other (which people can still choose).
 - **New tags** are proposed separately (`new_tags`, at most 2, like
   `airline-ticket`) when nothing on the list fits. The model is shown the
   tags already used on documents so it reuses them instead of making

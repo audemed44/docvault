@@ -48,6 +48,40 @@ func seedVocab() string {
 	return b.String()
 }
 
+// moreCategories is the migration adding Travel and Work (before Other),
+// renaming Banking to Banking & Investments, and their tags.
+func moreCategories() string {
+	var b strings.Builder
+	b.WriteString(`UPDATE categories SET position = position + 2 WHERE name = 'Other';
+	INSERT OR IGNORE INTO categories (name, position)
+		VALUES ('Travel', ifnull((SELECT position - 2 FROM categories WHERE name = 'Other'), (SELECT ifnull(max(position), 0) + 1 FROM categories)));
+	INSERT OR IGNORE INTO categories (name, position)
+		VALUES ('Work', ifnull((SELECT position - 1 FROM categories WHERE name = 'Other'), (SELECT ifnull(max(position), 0) + 1 FROM categories)));
+	UPDATE categories SET name = 'Banking & Investments'
+		WHERE name = 'Banking' AND NOT EXISTS (SELECT 1 FROM categories WHERE name = 'Banking & Investments');
+	`)
+	n := 1000 // after the starting tags
+	for _, group := range []struct {
+		categories []string
+		tags       []string
+	}{
+		{[]string{"Travel"}, []string{"airline-ticket", "train-ticket", "visa", "hotel-booking"}},
+		{[]string{"Work"}, []string{"offer-letter", "payslip", "relieving-letter", "epf"}},
+		{[]string{"Banking & Investments", "Banking"}, []string{"mutual-fund", "shares", "ppf", "nps"}},
+	} {
+		names := make([]string, len(group.categories))
+		for i, c := range group.categories {
+			names[i] = sqlString(c)
+		}
+		for _, t := range group.tags {
+			fmt.Fprintf(&b, "INSERT OR IGNORE INTO tag_vocab (name, category_id, position) VALUES (%s, (SELECT id FROM categories WHERE name IN (%s) ORDER BY position LIMIT 1), %d);\n",
+				sqlString(t), strings.Join(names, ", "), n)
+			n++
+		}
+	}
+	return b.String()
+}
+
 type VocabTag struct {
 	ID         int64  `json:"id"`
 	Name       string `json:"name"`

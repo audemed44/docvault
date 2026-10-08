@@ -48,7 +48,7 @@ You get a document's current title and its text. The text comes from OCR, so exp
 Personal details are replaced by placeholders: [aadhaar], [pan], [passport-no], [name], [address], [dob], [phone], [number] and so on mean that kind of value was there. [person:1], [person:2] and so on are members of the family.
 
 Answer with JSON only:
-- "category": the one category that fits best, from the list; "" only if none fits.
+- "category": the one category that fits, from the list. If none clearly fits, or you're unsure, return "" and the family sorts it by hand.
 - "tags": at most 5 tags from the allowed list that clearly apply. When it's clear which family member the document belongs to or is about, add their placeholder (e.g. "[person:2]") as a tag. Only tags from the list go here.
 - "new_tags": only when no tag on the list says what kind of document this is, up to 2 new tags in lowercase words joined by hyphens, like "airline-ticket". Reuse a tag from "other tags already in use" when one fits instead of making a variant of it. Usually empty.
 - "title": a short, specific title a person would give it, like "Car insurance policy 2025-26", "Aadhaar card - [person:1]", "Blood test - Mar 2026", "Electricity bill - Sep 2026". Use a family member's placeholder for them; no other placeholders. If the current title is already good, return it.

@@ -81,7 +81,7 @@ func TestSpacesAndSearch(t *testing.T) {
 	}
 
 	f, err := s.Facets(ctx, me.ID)
-	if err != nil || f.Total != 2 || f.Mine != 1 || f.Family != 1 || f.Inbox != 2 || f.Unclassified != 2 || len(f.Categories) != len(DefaultCategories)+1 {
+	if err != nil || f.Total != 2 || f.Mine != 1 || f.Family != 1 || f.Inbox != 2 || f.Unclassified != 2 || len(f.Categories) != len(DefaultCategories)+3 {
 		t.Fatalf("facets %+v %v", f, err)
 	}
 	if err := s.DeleteUser(ctx, dad.ID); !errors.Is(err, ErrInUse) {
@@ -170,7 +170,7 @@ func TestVocab(t *testing.T) {
 	for _, c := range cats {
 		names = append(names, c.Name)
 	}
-	if got := strings.Join(names, ","); got != "ID,Property,Medical,Insurance,Tax,Vehicle,Education,Bills,Banking,Other" {
+	if got := strings.Join(names, ","); got != "ID,Property,Medical,Insurance,Tax,Vehicle,Education,Bills,Banking & Investments,Travel,Work,Other" {
 		t.Fatalf("categories %s", got)
 	}
 	vocab, err := s.TagVocab(ctx)

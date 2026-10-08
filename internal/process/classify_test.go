@@ -90,7 +90,9 @@ func TestLLMClassify(t *testing.T) {
 		}
 	}
 	if !strings.Contains(sent, "[pan]") || !strings.Contains(sent, "Family members: [person:1]") ||
-		!strings.Contains(sent, "- ID: aadhaar, pan, passport") || !strings.Contains(sent, "- Banking: fd, loan") {
+		!strings.Contains(sent, "- ID: aadhaar, pan, passport") ||
+		!strings.Contains(sent, "- Banking & Investments: fd, loan, cheque, account-opening, mutual-fund") ||
+		!strings.Contains(sent, "- Travel: airline-ticket") || strings.Contains(sent, "- Other") {
 		t.Fatalf("prompt:\n%s", sent)
 	}
 	if req.Provider != nil {
@@ -265,7 +267,7 @@ func TestUsedTagsInPrompt(t *testing.T) {
 	st.SaveSettings(ctx, store.Settings{People: []mask.Person{{Name: "Pranav"}}})
 	// Tags in use: one on the list, a person, and one that isn't listed.
 	d := &store.Document{OwnerID: u.ID, Title: "a", DocDate: "2024-01-01", FileName: "a.pdf", Mime: "application/pdf", SHA256: "a",
-		Tags: []string{"pan", "Pranav", "airline-ticket"}}
+		Tags: []string{"pan", "Pranav", "bank-locker"}}
 	st.CreateDocument(ctx, d, u.ID)
 	fake := newFakeModel(t, `{"title":"","category":"","tags":[],"new_tags":["Boarding Pass"],"doc_date":"","expires":""}`)
 	p.Classifier = NewLLM(fake.srv.URL+"/v1", "test-key", "m")
@@ -273,7 +275,7 @@ func TestUsedTagsInPrompt(t *testing.T) {
 	res := store.JobResult{Text: "INDIGO boarding pass", TextSource: "pdf"}
 	p.classify(ctx, job, &res)
 	sent := fake.requests[0].Messages[1].Content
-	if !strings.Contains(sent, "Other tags already in use (for new_tags): airline-ticket\n") {
+	if !strings.Contains(sent, "Other tags already in use (for new_tags): bank-locker\n") {
 		t.Fatalf("prompt:\n%s", sent)
 	}
 	schemaJSON, _ := json.Marshal(fake.requests[0].ResponseFormat)
@@ -282,5 +284,24 @@ func TestUsedTagsInPrompt(t *testing.T) {
 	}
 	if res.Suggestion == nil || res.Suggestion.NewTags[0] != "boarding-pass" {
 		t.Fatalf("suggestion %+v", res.Suggestion)
+	}
+}
+
+func TestOtherNeverSuggested(t *testing.T) {
+	p, st, u := setup(t)
+	ctx := context.Background()
+	fake := newFakeModel(t, `{"title":"","category":"Other","tags":[],"new_tags":[],"doc_date":"","expires":""}`)
+	p.Classifier = NewLLM(fake.srv.URL+"/v1", "test-key", "m")
+	d := &store.Document{OwnerID: u.ID, Title: "Misc papers", DocDate: "2024-01-01", FileName: "x.pdf", Mime: "application/pdf", SHA256: "a"}
+	st.CreateDocument(ctx, d, u.ID)
+	job, _ := st.ClaimJob(ctx)
+	res := store.JobResult{Text: "something", TextSource: "pdf"}
+	p.classify(ctx, job, &res)
+	schemaJSON, _ := json.Marshal(fake.requests[len(fake.requests)-1].ResponseFormat)
+	if strings.Contains(string(schemaJSON), `"Other"`) {
+		t.Fatalf("Other offered: %s", schemaJSON)
+	}
+	if res.Suggestion != nil && res.Suggestion.Category != "" {
+		t.Fatalf("suggested %q", res.Suggestion.Category)
 	}
 }
