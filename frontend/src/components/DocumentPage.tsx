@@ -10,7 +10,7 @@ import {
 import { useEffect, useRef, useState } from "preact/hooks";
 import { api, docURL } from "../api";
 import { useData, useUnsavedWarning } from "../hooks";
-import { bytes, expiryText, formatDate, langName, plural } from "../lib";
+import { ago, bytes, expiryText, formatDate, langName, plural } from "../lib";
 import { navigate } from "../router";
 import type { Category, Doc, Settings, User } from "../types";
 import { CategorySelect, DocThumb } from "./docs";
@@ -40,6 +40,10 @@ export function DocumentPage(props: { id: number; user: User }) {
     );
   }
   if (!d) return <div class="page loading loading-page" />;
+  const showClassifier =
+    (!!settings.data?.classifier || !!d.classified || !!d.classify_error) &&
+    d.status !== "pending" &&
+    d.status !== "processing";
 
   return (
     <div class="page">
@@ -70,7 +74,10 @@ export function DocumentPage(props: { id: number; user: User }) {
       {d.status !== "pending" && d.status !== "processing" && (
         <TextSection doc={d} settings={settings.data} onQueued={doc.setData} />
       )}
-      <FileSection doc={d} />
+      {showClassifier && (
+        <ClassifierSection doc={d} settings={settings.data} onQueued={doc.setData} />
+      )}
+      <FileSection doc={d} index={busy ? 1 : showClassifier ? 3 : 2} />
     </div>
   );
 }
@@ -387,7 +394,69 @@ function TextSection(props: { doc: Doc; settings: Settings | null; onQueued: (d:
   );
 }
 
-function FileSection(props: { doc: Doc }) {
+/** The classifier: when it last looked, asking again, and exactly what it was sent. */
+function ClassifierSection(props: {
+  doc: Doc;
+  settings: Settings | null;
+  onQueued: (d: Doc) => void;
+}) {
+  const { doc, settings } = props;
+  const [shown, setShown] = useState<string | null>(null);
+  const { busy, error, run } = useAction();
+  const on = !!settings?.classifier;
+  return (
+    <section class="section">
+      <SectionHead index={2} title="Suggestions">
+        <span class="muted">
+          {settings?.classifier.startsWith("llm:")
+            ? settings.classifier.slice(4)
+            : on
+              ? "Classifier"
+              : "Off"}
+        </span>
+      </SectionHead>
+      {doc.classify_error && (
+        <div class="note note-warn">Couldn't get a suggestion: {doc.classify_error}</div>
+      )}
+      <p class="muted">
+        {doc.classified
+          ? `Last asked ${ago(doc.classified)}${doc.suggestion ? "; the suggestion is above." : "; nothing to suggest, or it was applied."}`
+          : "Not asked yet."}{" "}
+        It only ever gets the masked text, never the file.
+      </p>
+      {shown !== null && (
+        <div class="doc-text open">
+          <pre>{shown || "Nothing sent yet."}</pre>
+        </div>
+      )}
+      <div class="toolbar">
+        {on && (
+          <button
+            class="btn btn-small"
+            disabled={busy}
+            onClick={() => run(async () => props.onQueued(await api.reprocess(doc.id, false)))}
+          >
+            <Sparkles size={13} /> {doc.classified ? "Suggest again" : "Get a suggestion"}
+          </button>
+        )}
+        <button
+          class="btn btn-ghost btn-small"
+          disabled={busy}
+          onClick={() =>
+            shown !== null
+              ? setShown(null)
+              : run(async () => setShown((await api.classifierInput(doc.id)).text))
+          }
+        >
+          {shown !== null ? "Hide what it saw" : "What the classifier saw"}
+        </button>
+        {error && <span class="form-error">{error}</span>}
+      </div>
+    </section>
+  );
+}
+
+function FileSection(props: { doc: Doc; index: number }) {
   const d = props.doc;
   const { busy, error, run } = useAction();
   const remove = () =>
@@ -399,7 +468,7 @@ function FileSection(props: { doc: Doc }) {
   const photo = d.mime.startsWith("image/");
   return (
     <section class="section">
-      <SectionHead index={2} title="File" />
+      <SectionHead index={props.index} title="File" />
       <dl class="kv kv-wide">
         <div>
           <dt>Uploaded as</dt>

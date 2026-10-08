@@ -64,6 +64,9 @@ func (s *Server) Handler() http.Handler {
 
 	api.HandleFunc("GET /api/categories", s.listCategories)
 	api.HandleFunc("PUT /api/categories", adminOnly(s.saveCategories))
+	api.HandleFunc("GET /api/tags", s.listTagVocab)
+	api.HandleFunc("PUT /api/tags", adminOnly(s.saveTagVocab))
+	api.HandleFunc("POST /api/mask", s.maskPreview)
 	api.HandleFunc("GET /api/settings", s.getSettings)
 	api.HandleFunc("PUT /api/settings", adminOnly(s.saveSettings))
 
@@ -82,6 +85,9 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("POST /api/documents/{id}/reprocess", s.reprocess)
 	api.HandleFunc("POST /api/documents/{id}/suggestion", s.applySuggestion)
 	api.HandleFunc("DELETE /api/documents/{id}/suggestion", s.dismissSuggestion)
+	api.HandleFunc("GET /api/documents/{id}/classifier-input", s.classifierInput)
+	api.HandleFunc("POST /api/suggestions/apply", s.applySuggestions)
+	api.HandleFunc("POST /api/suggestions/request", s.requestSuggestions)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/session", s.getSession)

@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"image"
 	"image/jpeg"
@@ -352,7 +353,7 @@ func TestCategoriesAndSettings(t *testing.T) {
 	me, dad := x.setup()
 	var names []string
 	x.json(x.do("GET", "/api/categories?format=names", "", dad), 200, &names)
-	if len(names) != len(store.DefaultCategories) || names[0] != "ID" {
+	if len(names) != len(store.DefaultCategories)+1 || names[0] != "ID" || names[8] != "Banking" {
 		t.Fatalf("names %v", names)
 	}
 	x.json(x.do("PUT", "/api/categories", `[{"name":"ID"}]`, dad), 403, nil)
@@ -362,7 +363,7 @@ func TestCategoriesAndSettings(t *testing.T) {
 	var set settingsInfo
 	x.json(x.do("PUT", "/api/settings", `{"ocr_langs":"eng","shortcut_url":"https://www.icloud.com/shortcuts/abc"}`, me), 200, &set)
 	x.json(x.do("GET", "/api/settings", "", dad), 200, &set)
-	if set.OCRLangs != "eng" || set.ShortcutURL == "" || set.Classifier {
+	if set.OCRLangs != "eng" || set.ShortcutURL == "" || set.Classifier != "" {
 		t.Fatalf("settings %+v", set)
 	}
 }
@@ -397,5 +398,89 @@ func TestSPAFallback(t *testing.T) {
 	}
 	if rec := x.do("GET", "/healthz", "", ""); rec.Code != http.StatusNoContent {
 		t.Fatalf("healthz: %d", rec.Code)
+	}
+}
+
+type stubClassifier struct{}
+
+func (stubClassifier) Name() string { return "stub" }
+func (stubClassifier) Classify(context.Context, process.Input) (*store.Suggest, error) {
+	return &store.Suggest{}, nil
+}
+
+func TestSuggestions(t *testing.T) {
+	x := newServer(t)
+	me, _ := x.setup()
+	ctx := context.Background()
+	x.json(x.do("POST", "/api/suggestions/request", "", me), 409, nil) // off
+
+	// Masking settings and the preview.
+	x.json(x.do("PUT", "/api/settings", `{"ocr_langs":"eng","people":[{"name":" Pranav ","aliases":["Pranav Sample",""]},{"name":""}],"mask_words":["Sample"," "]}`, me), 200, nil)
+	var masked map[string]string
+	x.json(x.do("POST", "/api/mask", `{"text":"Pranav Sample, PAN ABCPS1234K, Sample Nagar"}`, me), 200, &masked)
+	if masked["text"] != "[person:1], PAN [pan], [masked] Nagar" {
+		t.Fatalf("masked %q", masked["text"])
+	}
+	var set settingsInfo
+	x.json(x.do("GET", "/api/settings", "", me), 200, &set)
+	if len(set.People) != 1 || len(set.People[0].Aliases) != 1 || len(set.MaskWords) != 1 {
+		t.Fatalf("settings %+v", set)
+	}
+
+	// The tag list.
+	var vocab []store.VocabTag
+	x.json(x.do("GET", "/api/tags", "", me), 200, &vocab)
+	if len(vocab) < 40 {
+		t.Fatalf("vocab %d", len(vocab))
+	}
+	x.json(x.do("PUT", "/api/tags", `[{"name":"#car"},{"name":"Car"}]`, me), 409, nil)
+	x.json(x.do("PUT", "/api/tags", `[{"name":"#car"},{"name":"pets","category_id":1}]`, me), 200, &vocab)
+	if len(vocab) != 2 || vocab[1].Name != "car" { // uncategorised tags last
+		t.Fatalf("vocab %+v", vocab)
+	}
+
+	// Two documents with suggestions; applying all of them in the inbox.
+	x.upload(me, "", part{"file", "a.pdf", pdfBytes("a")})
+	x.upload(me, "", part{"file", "b.pdf", pdfBytes("b")})
+	for range 2 {
+		job, _ := x.s.Store.ClaimJob(ctx)
+		x.s.Store.FinishJob(ctx, job.ID, store.JobResult{Pages: 1, TextSource: "pdf", Text: "text", Classified: true,
+			ClassifierInput: "Title: a\n\ntext", Suggestion: &store.Suggest{Title: "Renamed", Category: "Banking", Tags: []string{"fd"}}})
+	}
+	var facets store.Facets
+	x.json(x.do("GET", "/api/facets", "", me), 200, &facets)
+	if facets.Suggested != 2 {
+		t.Fatalf("facets %+v", facets)
+	}
+	var in map[string]string
+	x.json(x.do("GET", "/api/documents/1/classifier-input", "", me), 200, &in)
+	if !strings.HasPrefix(in["text"], "Title: a") {
+		t.Fatalf("input %q", in["text"])
+	}
+	var applied map[string]int
+	x.json(x.do("POST", "/api/suggestions/apply?category=none", "", me), 200, &applied)
+	if applied["applied"] != 2 {
+		t.Fatalf("applied %v", applied)
+	}
+	var list struct{ Documents []store.Document }
+	x.json(x.do("GET", "/api/documents?category=none", "", me), 200, &list)
+	if len(list.Documents) != 0 {
+		t.Fatal("still in the inbox")
+	}
+	x.json(x.do("GET", "/api/documents?q=renamed", "", me), 200, &list)
+	if len(list.Documents) != 2 || list.Documents[0].Category != "Banking" || list.Documents[0].Tags[0] != "fd" || list.Documents[0].Suggestion != nil {
+		t.Fatalf("after apply %+v", list.Documents)
+	}
+
+	// Asking again queues them.
+	x.s.Processor.Classifier = stubClassifier{}
+	var queued map[string]int
+	x.json(x.do("POST", "/api/suggestions/request?q=renamed", "", me), 200, &queued)
+	if queued["queued"] != 2 {
+		t.Fatalf("queued %v", queued)
+	}
+	x.json(x.do("GET", "/api/settings", "", me), 200, &set)
+	if set.Classifier != "stub" {
+		t.Fatalf("classifier %q", set.Classifier)
 	}
 }

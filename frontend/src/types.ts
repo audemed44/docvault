@@ -50,6 +50,9 @@ export interface Doc {
   text_source: "" | "pdf" | "ocr";
   ocr_lang?: string;
   suggestion?: Suggestion;
+  /** When the classifier last looked at it. */
+  classified?: string;
+  classify_error?: string;
   created: string;
   updated: string;
   /** Matching text, matches between \u0002 and \u0003 (search only). */
@@ -80,6 +83,10 @@ export interface Facets {
   expiring: number;
   processing: number;
   failed: number;
+  /** With a suggestion waiting. */
+  suggested: number;
+  /** Processed, but never seen by the classifier. */
+  unclassified: number;
   categories: Category[];
   tags: Count[];
   years: Count[];
@@ -94,6 +101,8 @@ export interface Filter {
   year: string;
   expiring: boolean;
   status: string;
+  suggested: boolean;
+  unclassified: boolean;
 }
 
 export interface APIToken {
@@ -106,11 +115,27 @@ export interface APIToken {
   token?: string;
 }
 
+export interface Person {
+  /** Also their tag. */
+  name: string;
+  aliases: string[];
+}
+
 export interface Settings {
   ocr_langs: string;
   shortcut_url: string;
+  people: Person[];
+  mask_words: string[];
   languages: string[];
-  classifier: boolean;
+  /** "llm:<model>", "hook", or "" when suggestions are off. */
+  classifier: string;
+}
+
+export interface VocabTag {
+  id?: number;
+  name: string;
+  /** 0: any category. */
+  category_id: number;
 }
 
 export type IngestStatus = "added" | "duplicate" | "skipped" | "failed";

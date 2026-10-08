@@ -1389,3 +1389,80 @@ input[type="date"].input {
 .field .seg {
   align-self: flex-start;
 }
+.suggestion-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin-top: -16px;
+}
+.suggestion-bar-text {
+  flex: 1;
+  min-width: 200px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+.vocab {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--line-soft);
+}
+.vocab-row {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 12px;
+  align-items: baseline;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+.vocab-cat {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+.vocab-add {
+  width: 90px;
+  height: 22px;
+  margin: 2px 0;
+  padding: 0 6px;
+  background: none;
+  border: 1px dashed var(--line);
+  color: var(--fg);
+  font: inherit;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  outline: none;
+}
+.vocab-add:focus {
+  border-color: var(--accent);
+  border-style: solid;
+}
+@media (max-width: 560px) {
+  .vocab-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+}
+.people {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+.person-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) 34px;
+  gap: 6px;
+  width: 100%;
+}
+@media (max-width: 560px) {
+  .person-row {
+    grid-template-columns: minmax(0, 1fr) 34px;
+  }
+  .person-row input:nth-child(2) {
+    grid-row: 2;
+  }
+}

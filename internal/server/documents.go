@@ -1,9 +1,11 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -205,10 +207,12 @@ func (s *Server) uploadOptions(r *http.Request, u *store.User, f map[string]stri
 
 // ── Library ─────────────────────────────────────────────────────────────
 
-func (s *Server) listDocuments(w http.ResponseWriter, r *http.Request) {
+// filterOf reads a library filter from the query string.
+func filterOf(r *http.Request) store.Filter {
 	q := r.URL.Query()
 	f := store.Filter{Query: q.Get("q"), Space: q.Get("space"), Tag: q.Get("tag"), Year: q.Get("year"),
-		Expiring: q.Get("expiring") == "1", Status: q.Get("status")}
+		Expiring: q.Get("expiring") == "1", Status: q.Get("status"),
+		Suggested: q.Get("suggested") == "1", Unclassified: q.Get("unclassified") == "1"}
 	switch c := q.Get("category"); c {
 	case "", "all":
 	case "none":
@@ -218,7 +222,11 @@ func (s *Server) listDocuments(w http.ResponseWriter, r *http.Request) {
 	}
 	f.Limit, _ = strconv.Atoi(q.Get("limit"))
 	f.Offset, _ = strconv.Atoi(q.Get("offset"))
-	docs, total, err := s.Store.Search(r.Context(), currentUser(r).ID, f)
+	return f
+}
+
+func (s *Server) listDocuments(w http.ResponseWriter, r *http.Request) {
+	docs, total, err := s.Store.Search(r.Context(), currentUser(r).ID, filterOf(r))
 	if err != nil {
 		storeError(w, err)
 		return
@@ -389,18 +397,28 @@ func validLangs(spec string) bool {
 	return true
 }
 
-// applySuggestion applies the classifier's suggestion: its title, date,
-// expiry and category, and its tags added to the document's.
+// applySuggestion applies the classifier's suggestion to one document.
 func (s *Server) applySuggestion(w http.ResponseWriter, r *http.Request) {
 	d, ok := s.document(w, r)
 	if !ok {
 		return
 	}
-	sg := d.Suggestion
-	if sg == nil {
+	if d.Suggestion == nil {
 		writeError(w, http.StatusNotFound, "no suggestion")
 		return
 	}
+	s.suggest(d)
+	if err := s.Store.ClearSuggestion(r.Context(), currentUser(r).ID, d.ID); err != nil {
+		storeError(w, err)
+		return
+	}
+	s.saveDocument(w, r, d)
+}
+
+// suggest changes d as its suggestion says: its title, date, expiry and
+// category, and its tags added to the document's.
+func (s *Server) suggest(d *store.Document) {
+	sg := d.Suggestion
 	if sg.Title != "" {
 		d.Title = sg.Title
 	}
@@ -411,16 +429,77 @@ func (s *Server) applySuggestion(w http.ResponseWriter, r *http.Request) {
 		d.Expires = sg.Expires
 	}
 	if sg.Category != "" {
-		if id, err := s.Store.CategoryByName(r.Context(), sg.Category); err == nil {
+		if id, err := s.Store.CategoryByName(context.Background(), sg.Category); err == nil {
 			d.CategoryID = id
 		}
 	}
 	d.Tags = append(d.Tags, sg.Tags...)
-	if err := s.Store.ClearSuggestion(r.Context(), currentUser(r).ID, d.ID); err != nil {
+}
+
+// applySuggestions applies the suggestions of every document matching the
+// filter in the query string.
+func (s *Server) applySuggestions(w http.ResponseWriter, r *http.Request) {
+	me := currentUser(r)
+	f := filterOf(r)
+	f.Suggested = true
+	ids, err := s.Store.MatchingIDs(r.Context(), me.ID, f)
+	if err != nil {
 		storeError(w, err)
 		return
 	}
-	s.saveDocument(w, r, d)
+	applied := 0
+	for _, id := range ids {
+		d, err := s.Store.Document(r.Context(), me.ID, id)
+		if err != nil || d.Suggestion == nil {
+			continue
+		}
+		s.suggest(d)
+		if err := s.Store.UpdateDocument(r.Context(), me.ID, d); err != nil {
+			slog.Warn("apply suggestion", "document", id, "err", err)
+			continue
+		}
+		if err := s.Store.ClearSuggestion(r.Context(), me.ID, id); err == nil {
+			applied++
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"applied": applied})
+}
+
+// requestSuggestions queues every document matching the filter for the
+// classifier again (keeping their OCR text).
+func (s *Server) requestSuggestions(w http.ResponseWriter, r *http.Request) {
+	if s.Processor.Classifier == nil {
+		writeError(w, http.StatusConflict, "suggestions are off: set DOCVAULT_LLM_KEY and DOCVAULT_LLM_MODEL")
+		return
+	}
+	me := currentUser(r)
+	ids, err := s.Store.MatchingIDs(r.Context(), me.ID, filterOf(r))
+	if err != nil {
+		storeError(w, err)
+		return
+	}
+	queued := 0
+	for _, id := range ids {
+		if err := s.Store.Requeue(r.Context(), me.ID, id, false, ""); err == nil {
+			queued++
+		}
+	}
+	s.Processor.Wake()
+	writeJSON(w, http.StatusOK, map[string]int{"queued": queued})
+}
+
+// classifierInput is the masked text the classifier was last sent.
+func (s *Server) classifierInput(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	text, err := s.Store.ClassifierInput(r.Context(), currentUser(r).ID, id)
+	if err != nil {
+		storeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"text": text})
 }
 
 func (s *Server) dismissSuggestion(w http.ResponseWriter, r *http.Request) {

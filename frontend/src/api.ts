@@ -10,6 +10,7 @@ import type {
   Settings,
   UploadResponse,
   User,
+  VocabTag,
 } from "./types";
 
 export class ApiError extends Error {
@@ -61,6 +62,8 @@ export function filterQuery(f: Partial<Filter>, extra: Record<string, string> = 
   if (f.year) p.set("year", f.year);
   if (f.expiring) p.set("expiring", "1");
   if (f.status) p.set("status", f.status);
+  if (f.suggested) p.set("suggested", "1");
+  if (f.unclassified) p.set("unclassified", "1");
   for (const [k, v] of Object.entries(extra)) p.set(k, v);
   const s = p.toString();
   return s ? `?${s}` : "";
@@ -141,8 +144,11 @@ export const api = {
   saveCategories: (cats: Partial<Category>[]) =>
     request<Category[]>("/api/categories", json("PUT", cats)),
   settings: () => request<Settings>("/api/settings"),
-  saveSettings: (s: { ocr_langs: string; shortcut_url: string }) =>
+  saveSettings: (s: Omit<Settings, "languages" | "classifier">) =>
     request<Settings>("/api/settings", json("PUT", s)),
+  tagVocab: () => request<VocabTag[]>("/api/tags"),
+  saveTagVocab: (tags: VocabTag[]) => request<VocabTag[]>("/api/tags", json("PUT", tags)),
+  mask: (text: string) => request<{ text: string }>("/api/mask", json("POST", { text })),
 
   facets: () => request<Facets>("/api/facets"),
   documents: (f: Partial<Filter>, offset = 0, limit = 60) =>
@@ -159,6 +165,12 @@ export const api = {
     request<Doc>(`/api/documents/${id}/suggestion`, { method: "POST" }),
   dismissSuggestion: (id: number) =>
     request<void>(`/api/documents/${id}/suggestion`, { method: "DELETE" }),
+  classifierInput: (id: number) =>
+    request<{ text: string }>(`/api/documents/${id}/classifier-input`),
+  applySuggestions: (f: Partial<Filter>) =>
+    request<{ applied: number }>(`/api/suggestions/apply${filterQuery(f)}`, { method: "POST" }),
+  requestSuggestions: (f: Partial<Filter>) =>
+    request<{ queued: number }>(`/api/suggestions/request${filterQuery(f)}`, { method: "POST" }),
 
   importStatus: () => request<ImportReport>("/api/import"),
   startImport: () => request<ImportReport>("/api/import", { method: "POST" }),
