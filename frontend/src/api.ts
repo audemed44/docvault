@@ -1,5 +1,4 @@
 import type {
-  APIToken,
   Category,
   Count,
   Doc,
@@ -122,20 +121,14 @@ export function upload(
 
 export const api = {
   session: () => request<Session>("/api/session"),
-  login: (username: string, password: string) =>
-    request<Session>("/api/session", json("POST", { username, password })),
-  setup: (body: { token: string; username: string; name: string; password: string }) =>
+  login: (username: string) => request<Session>("/api/session", json("POST", { username })),
+  setup: (body: { username: string; name: string }) =>
     request<Session>("/api/setup", json("POST", body)),
   logout: () => request<void>("/api/session", { method: "DELETE" }),
-  updateMe: (body: { name: string; current_password?: string; password?: string }) =>
-    request<User | Session>("/api/me", json("PUT", body)),
-
-  tokens: () => request<APIToken[]>("/api/tokens"),
-  createToken: (name: string) => request<APIToken>("/api/tokens", json("POST", { name })),
-  deleteToken: (id: number) => request<void>(`/api/tokens/${id}`, { method: "DELETE" }),
+  updateMe: (body: { name: string }) => request<User>("/api/me", json("PUT", body)),
 
   users: () => request<User[]>("/api/users"),
-  saveUser: (u: Partial<User> & { password?: string }) =>
+  saveUser: (u: Partial<User>) =>
     u.id
       ? request<User>(`/api/users/${u.id}`, json("PUT", u))
       : request<User>("/api/users", json("POST", u)),

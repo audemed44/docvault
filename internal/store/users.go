@@ -23,19 +23,14 @@ type User struct {
 	Created  time.Time `json:"created"`
 	// Documents counts the user's private documents (in Users only).
 	Documents int `json:"documents"`
-
-	password string
 }
 
-// Password is the stored password hash.
-func (u *User) Password() string { return u.password }
-
-const userCols = `id, username, name, password, admin, created`
+const userCols = `id, username, name, admin, created`
 
 func scanUser(row interface{ Scan(...any) error }) (*User, error) {
 	var u User
 	var created int64
-	if err := row.Scan(&u.ID, &u.Username, &u.Name, &u.password, &u.Admin, &created); err != nil {
+	if err := row.Scan(&u.ID, &u.Username, &u.Name, &u.Admin, &created); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
@@ -67,7 +62,7 @@ func (s *Store) Users(ctx context.Context) ([]User, error) {
 	for rows.Next() {
 		var u User
 		var created int64
-		if err := rows.Scan(&u.ID, &u.Username, &u.Name, &u.password, &u.Admin, &created, &u.Documents); err != nil {
+		if err := rows.Scan(&u.ID, &u.Username, &u.Name, &u.Admin, &created, &u.Documents); err != nil {
 			return nil, err
 		}
 		u.Created = fromMS(created)
@@ -84,12 +79,11 @@ func (s *Store) UserByName(ctx context.Context, username string) (*User, error) 
 	return scanUser(s.db.QueryRowContext(ctx, `SELECT `+userCols+` FROM users WHERE username = ?`, username))
 }
 
-// CreateUser adds a user with an already hashed password.
-func (s *Store) CreateUser(ctx context.Context, u *User, passwordHash string) error {
+func (s *Store) CreateUser(ctx context.Context, u *User) error {
 	u.Created = time.Now()
 	res, err := s.db.ExecContext(ctx,
-		`INSERT INTO users (username, name, password, admin, created) VALUES (?, ?, ?, ?, ?)`,
-		u.Username, u.Name, passwordHash, u.Admin, ms(u.Created))
+		`INSERT INTO users (username, name, admin, created) VALUES (?, ?, ?, ?)`,
+		u.Username, u.Name, u.Admin, ms(u.Created))
 	if isUnique(err) {
 		return ErrConflict
 	}
@@ -97,34 +91,19 @@ func (s *Store) CreateUser(ctx context.Context, u *User, passwordHash string) er
 		return err
 	}
 	u.ID, err = res.LastInsertId()
-	u.password = passwordHash
 	return err
 }
 
-// UpdateUser changes the name and admin flag, and the password when
-// passwordHash isn't empty. A new password signs the user out everywhere.
-func (s *Store) UpdateUser(ctx context.Context, u *User, passwordHash string) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	res, err := tx.ExecContext(ctx, `UPDATE users SET name = ?, admin = ? WHERE id = ?`, u.Name, u.Admin, u.ID)
+// UpdateUser changes the name and admin flag.
+func (s *Store) UpdateUser(ctx context.Context, u *User) error {
+	res, err := s.db.ExecContext(ctx, `UPDATE users SET name = ?, admin = ? WHERE id = ?`, u.Name, u.Admin, u.ID)
 	if err != nil {
 		return err
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return ErrNotFound
 	}
-	if passwordHash != "" {
-		if _, err := tx.ExecContext(ctx, `UPDATE users SET password = ? WHERE id = ?`, passwordHash, u.ID); err != nil {
-			return err
-		}
-		if _, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE user_id = ?`, u.ID); err != nil {
-			return err
-		}
-	}
-	return tx.Commit()
+	return nil
 }
 
 // DeleteUser removes a user who has no private documents left.
@@ -146,7 +125,7 @@ func (s *Store) DeleteUser(ctx context.Context, id int64) error {
 	return nil
 }
 
-// Sessions and API tokens are stored as hashes of the secret.
+// Sessions are stored as hashes of the secret.
 
 func (s *Store) CreateSession(ctx context.Context, hash string, userID int64) error {
 	now := ms(time.Now())
@@ -159,7 +138,7 @@ func (s *Store) CreateSession(ctx context.Context, hash string, userID int64) er
 // (at most hourly). Sessions unused for maxIdle have expired.
 func (s *Store) SessionUser(ctx context.Context, hash string, maxIdle time.Duration) (*User, error) {
 	var seen int64
-	u, err := scanUser(s.db.QueryRowContext(ctx, `SELECT u.id, u.username, u.name, u.password, u.admin, u.created
+	u, err := scanUser(s.db.QueryRowContext(ctx, `SELECT u.id, u.username, u.name, u.admin, u.created
 		FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.hash = ?`, hash))
 	if err != nil {
 		return nil, err
@@ -181,77 +160,4 @@ func (s *Store) SessionUser(ctx context.Context, hash string, maxIdle time.Durat
 func (s *Store) DeleteSession(ctx context.Context, hash string) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE hash = ?`, hash)
 	return err
-}
-
-type APIToken struct {
-	ID      int64     `json:"id"`
-	Name    string    `json:"name"`
-	Hint    string    `json:"hint"` // the last characters, to tell tokens apart
-	Created time.Time `json:"created"`
-	Used    time.Time `json:"used,omitzero"`
-}
-
-func (s *Store) APITokens(ctx context.Context, userID int64) ([]APIToken, error) {
-	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, name, hint, created, used FROM api_tokens WHERE user_id = ? ORDER BY id`, userID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []APIToken{}
-	for rows.Next() {
-		var t APIToken
-		var created, used int64
-		if err := rows.Scan(&t.ID, &t.Name, &t.Hint, &created, &used); err != nil {
-			return nil, err
-		}
-		t.Created, t.Used = fromMS(created), fromMS(used)
-		out = append(out, t)
-	}
-	return out, rows.Err()
-}
-
-func (s *Store) CreateAPIToken(ctx context.Context, userID int64, t *APIToken, hash string) error {
-	t.Created = time.Now()
-	res, err := s.db.ExecContext(ctx,
-		`INSERT INTO api_tokens (user_id, name, hash, hint, created) VALUES (?, ?, ?, ?, ?)`,
-		userID, t.Name, hash, t.Hint, ms(t.Created))
-	if err != nil {
-		return err
-	}
-	t.ID, err = res.LastInsertId()
-	return err
-}
-
-func (s *Store) DeleteAPIToken(ctx context.Context, userID, id int64) error {
-	res, err := s.db.ExecContext(ctx, `DELETE FROM api_tokens WHERE id = ? AND user_id = ?`, id, userID)
-	if err != nil {
-		return err
-	}
-	if n, _ := res.RowsAffected(); n == 0 {
-		return ErrNotFound
-	}
-	return nil
-}
-
-// TokenUser finds the user an API token belongs to, and notes its use (at
-// most every minute).
-func (s *Store) TokenUser(ctx context.Context, hash string) (*User, error) {
-	var tokenID, used int64
-	err := s.db.QueryRowContext(ctx, `SELECT id, used FROM api_tokens WHERE hash = ?`, hash).Scan(&tokenID, &used)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, ErrNotFound
-	}
-	if err != nil {
-		return nil, err
-	}
-	u, err := scanUser(s.db.QueryRowContext(ctx, `SELECT u.id, u.username, u.name, u.password, u.admin, u.created
-		FROM api_tokens t JOIN users u ON u.id = t.user_id WHERE t.id = ?`, tokenID))
-	if err != nil {
-		return nil, err
-	}
-	if now := time.Now(); now.Sub(fromMS(used)) > time.Minute {
-		_, _ = s.db.ExecContext(ctx, `UPDATE api_tokens SET used = ? WHERE id = ?`, ms(now), tokenID)
-	}
-	return u, nil
 }

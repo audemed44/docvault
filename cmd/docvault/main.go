@@ -38,11 +38,7 @@ func main() {
 	}
 	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})))
 
-	token := os.Getenv("DOCVAULT_TOKEN")
-	if token == "" {
-		slog.Error("set DOCVAULT_TOKEN: it creates the first account, and Foyer uses it for the widget")
-		os.Exit(1)
-	}
+	token := os.Getenv("DOCVAULT_TOKEN") // Foyer's key; without it, no Foyer card
 	dataDir := env("DOCVAULT_DATA_DIR", "/data")
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		slog.Error("could not create the data folder", "err", err)

@@ -1,9 +1,9 @@
-import { ArrowDown, ArrowUp, Plus, Smartphone, Trash2, X } from "lucide-preact";
+import { ArrowDown, ArrowUp, Plus, Trash2, X } from "lucide-preact";
 import { useState } from "preact/hooks";
 import { api } from "../api";
 import { useData } from "../hooks";
-import { ago, langName, plural } from "../lib";
-import type { APIToken, Category, Settings, User } from "../types";
+import { langName, plural } from "../lib";
+import type { Category, Settings, User } from "../types";
 import { MaskingSection, TagsSection } from "./SuggestSettings";
 import { CopyField, Dialog, Empty, ErrorNote, Field, SectionHead, useAction } from "./ui";
 
@@ -17,7 +17,7 @@ export function SettingsPage(props: { user: User; onUser: (u: User) => void }) {
         <div class="eyebrow eyebrow-accent">{user.name}</div>
         <h1 class="page-title">Settings</h1>
       </header>
-      <IPhoneSection index={++n} settings={settings.data} />
+      <IPhoneSection index={++n} user={user} settings={settings.data} />
       <AccountSection index={++n} user={user} onUser={props.onUser} />
       {user.admin && <PeopleSection index={++n} me={user} />}
       {user.admin && <CategoriesSection index={++n} />}
@@ -37,11 +37,7 @@ export function SettingsPage(props: { user: User; onUser: (u: User) => void }) {
   );
 }
 
-function IPhoneSection(props: { index: number; settings: Settings | null }) {
-  const tokens = useData(api.tokens);
-  const [name, setName] = useState("");
-  const [created, setCreated] = useState<APIToken | null>(null);
-  const { busy, error, run } = useAction();
+function IPhoneSection(props: { index: number; user: User; settings: Settings | null }) {
   const origin = window.location.origin;
 
   return (
@@ -49,11 +45,10 @@ function IPhoneSection(props: { index: number; settings: Settings | null }) {
       <SectionHead index={props.index} title="iPhone" />
       <p class="muted page-lede">
         Scan in the Files or Notes app, then <strong>Share → Save to Vault</strong>: pick a
-        category, type a title, done. The Shortcut needs a personal token, which only works for your
-        account and can only upload and read, not change settings.
+        category, type a title, done. The Shortcut sends your username, so what it saves goes to
+        your library.
       </p>
       <ol class="steps">
-        <li>Make a token below (one per phone) and copy it.</li>
         <li>
           {props.settings?.shortcut_url ? (
             <>
@@ -61,21 +56,27 @@ function IPhoneSection(props: { index: number; settings: Settings | null }) {
               <a class="link-btn" href={props.settings.shortcut_url} target="_blank" rel="noopener">
                 the Save to Vault Shortcut
               </a>{" "}
-              and add it. It asks for the token once.
+              and add it. It asks for your username once.
             </>
           ) : (
             <>
               Build the Shortcut: <em>Receive PDFs and Images from Share Sheet</em> →{" "}
               <em>Choose from Menu</em> with the categories → <em>Ask for Input</em> “Title?” →{" "}
-              <em>Get Contents of URL</em>: POST, header{" "}
-              <code>Authorization: Bearer &lt;token&gt;</code>, form fields <code>file</code>,{" "}
-              <code>category</code>, <code>title</code> → show the answer as a notification.
+              <em>Get Contents of URL</em>: POST, header <code>X-Docvault-User</code> with your
+              username, form fields <code>file</code>, <code>category</code>, <code>title</code> →
+              show the answer as a notification.
             </>
           )}
         </li>
         <li>Tailscale needs to be on. The Shortcut shows “ok: saved …” or what went wrong.</li>
       </ol>
       <div class="kv kv-wide">
+        <div>
+          <dt>Your username</dt>
+          <dd>
+            <CopyField value={props.user.username} />
+          </dd>
+        </div>
         <div>
           <dt>Upload to</dt>
           <dd>
@@ -89,78 +90,12 @@ function IPhoneSection(props: { index: number; settings: Settings | null }) {
           </dd>
         </div>
       </div>
-
-      {created?.token && (
-        <div class="note note-accent">
-          <div class="eyebrow eyebrow-accent">Token for {created.name}</div>
-          <p>Copy it now: it isn't shown again.</p>
-          <CopyField value={created.token} label="Copy the token" />
-        </div>
-      )}
-      {error && <ErrorNote>{error}</ErrorNote>}
-      {tokens.data && tokens.data.length > 0 && (
-        <div class="list">
-          {tokens.data.map((t) => (
-            <div key={t.id} class="list-row">
-              <Smartphone size={16} class="muted" />
-              <span class="list-main list-link">
-                <span class="list-title">{t.name}</span>
-                <span class="list-sub mono">
-                  …{t.hint} · made {ago(t.created)}
-                  {t.used ? ` · used ${ago(t.used)}` : " · not used yet"}
-                </span>
-              </span>
-              <button
-                class="icon-btn"
-                aria-label={`Revoke ${t.name}`}
-                title="Revoke"
-                disabled={busy}
-                onClick={() =>
-                  run(async () => {
-                    if (!confirm(`Revoke the token “${t.name}”? Its Shortcut stops working.`)) {
-                      return;
-                    }
-                    await api.deleteToken(t.id);
-                    if (created?.id === t.id) setCreated(null);
-                    await tokens.reload();
-                  })
-                }
-              >
-                <Trash2 size={15} />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-      <form
-        class="toolbar"
-        onSubmit={(e) => {
-          e.preventDefault();
-          run(async () => {
-            setCreated(await api.createToken(name.trim()));
-            setName("");
-            await tokens.reload();
-          });
-        }}
-      >
-        <input
-          class="input input-inline"
-          placeholder="Name, like “Dad's iPhone”"
-          value={name}
-          onInput={(e) => setName(e.currentTarget.value)}
-        />
-        <button class="btn btn-primary" disabled={!name.trim() || busy}>
-          <Plus size={14} /> Make a token
-        </button>
-      </form>
     </section>
   );
 }
 
 function AccountSection(props: { index: number; user: User; onUser: (u: User) => void }) {
   const [name, setName] = useState(props.user.name);
-  const [current, setCurrent] = useState("");
-  const [password, setPassword] = useState("");
   const [saved, setSaved] = useState("");
   const { busy, error, run } = useAction();
 
@@ -168,15 +103,8 @@ function AccountSection(props: { index: number; user: User; onUser: (u: User) =>
     e.preventDefault();
     setSaved("");
     run(async () => {
-      const res = await api.updateMe({
-        name,
-        current_password: current || undefined,
-        password: password || undefined,
-      });
-      props.onUser("user" in res && res.user ? res.user : (res as User));
-      setCurrent("");
-      setPassword("");
-      setSaved(password ? "Saved. Your other devices are signed out." : "Saved.");
+      props.onUser(await api.updateMe({ name }));
+      setSaved("Saved.");
     });
   };
 
@@ -189,33 +117,10 @@ function AccountSection(props: { index: number; user: User; onUser: (u: User) =>
         <Field label="Name">
           <input class="input" value={name} onInput={(e) => setName(e.currentTarget.value)} />
         </Field>
-        <div class="form-grid">
-          <Field label="Current password">
-            <input
-              class="input"
-              type="password"
-              autocomplete="current-password"
-              value={current}
-              onInput={(e) => setCurrent(e.currentTarget.value)}
-            />
-          </Field>
-          <Field label="New password" hint="Blank keeps it">
-            <input
-              class="input"
-              type="password"
-              autocomplete="new-password"
-              value={password}
-              onInput={(e) => setPassword(e.currentTarget.value)}
-            />
-          </Field>
-        </div>
         {error && <div class="form-error">{error}</div>}
         {saved && <div class="tone-good">{saved}</div>}
         <div class="toolbar">
-          <button
-            class="btn btn-primary"
-            disabled={busy || !name.trim() || (!!password && !current)}
-          >
+          <button class="btn btn-primary" disabled={busy || !name.trim()}>
             Save
           </button>
         </div>
@@ -282,13 +187,12 @@ function UserDialog(props: {
   onSaved: () => void;
 }) {
   const [u, setU] = useState(props.user);
-  const [password, setPassword] = useState("");
   const { busy, error, run } = useAction();
   const isMe = u.id === props.me.id;
   const save = (e: Event) => {
     e.preventDefault();
     run(async () => {
-      await api.saveUser({ ...u, password: password || undefined });
+      await api.saveUser(u);
       props.onSaved();
     });
   };
@@ -313,18 +217,14 @@ function UserDialog(props: {
           <button class="btn btn-ghost" onClick={props.onClose}>
             Cancel
           </button>
-          <button
-            class="btn btn-primary"
-            form="user-form"
-            disabled={busy || !u.username?.trim() || (!u.id && password.length < 8)}
-          >
+          <button class="btn btn-primary" form="user-form" disabled={busy || !u.username?.trim()}>
             Save
           </button>
         </>
       }
     >
       <form id="user-form" class="form" onSubmit={save}>
-        <Field label="Username" hint={u.id ? "Can't be changed" : "What they sign in with"}>
+        <Field label="Username" hint={u.id ? "Can't be changed" : "All they need to sign in"}>
           <input
             class="input"
             autocapitalize="none"
@@ -338,18 +238,6 @@ function UserDialog(props: {
             class="input"
             value={u.name}
             onInput={(e) => setU({ ...u, name: e.currentTarget.value })}
-          />
-        </Field>
-        <Field
-          label={u.id ? "New password" : "Password"}
-          hint={u.id ? "Blank keeps it; a new one signs them out" : "At least 8 characters"}
-        >
-          <input
-            class="input"
-            type="password"
-            autocomplete="new-password"
-            value={password}
-            onInput={(e) => setPassword(e.currentTarget.value)}
           />
         </Field>
         <label class="check">

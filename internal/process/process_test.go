@@ -130,7 +130,7 @@ func setup(t *testing.T) (*Processor, *store.Store, *store.User) {
 	}
 	t.Cleanup(func() { st.Close() })
 	u := &store.User{Username: "me", Name: "Me"}
-	if err := st.CreateUser(context.Background(), u, "x"); err != nil {
+	if err := st.CreateUser(context.Background(), u); err != nil {
 		t.Fatal(err)
 	}
 	return New(Options{Store: st, Files: filepath.Join(dir, "files"), Cache: filepath.Join(dir, "cache")}), st, u

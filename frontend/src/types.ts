@@ -10,7 +10,7 @@ export interface User {
 
 export interface Session {
   authenticated: boolean;
-  /** No accounts yet: the first one is made with DOCVAULT_TOKEN. */
+  /** No accounts yet: the first one (an admin) is made on the sign-in page. */
   setup_needed?: boolean;
   user?: User;
   /** Foyer, the homelab's start page (HOMEPAGE_URL). */
@@ -105,16 +105,6 @@ export interface Filter {
   status: string;
   suggested: boolean;
   unclassified: boolean;
-}
-
-export interface APIToken {
-  id: number;
-  name: string;
-  hint: string;
-  created: string;
-  used?: string;
-  /** Only when it's just been made. */
-  token?: string;
 }
 
 export interface Person {

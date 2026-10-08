@@ -10,8 +10,8 @@ binary with the web UI built in, data in SQLite, files on disk.
 
 - **Accounts**: each person has a private library. A shared **Family**
   space holds what everyone should see. Admins add people; there's no
-  sign-up.
-- **Uploads**: from the iOS Shortcut (personal API token), the web UI
+  sign-up and no passwords: the username is the sign-in (see below).
+- **Uploads**: from the iOS Shortcut (it sends your username), the web UI
   (drag and drop, several files), a whole folder in the browser, or a
   folder on the server (`/data/import/<username>/`). PDF, JPEG, PNG and
   HEIC; photos are shown as a PDF, and the original is kept too.
@@ -36,7 +36,7 @@ services:
     restart: unless-stopped
     user: "1000:1000"
     environment:
-      - DOCVAULT_TOKEN=${DOCVAULT_TOKEN} # openssl rand -hex 32
+      - DOCVAULT_TOKEN=${DOCVAULT_TOKEN} # optional, for Foyer: openssl rand -hex 32
     volumes:
       - ./docvault:/data
     ports:
@@ -44,13 +44,13 @@ services:
     mem_limit: 768m # idles at ~25 MB; OCR peaks ~460 MB per page, briefly
 ```
 
-Then open it and create the first account (an admin) with the
-`DOCVAULT_TOKEN`. See [docker-compose.example.yml](docker-compose.example.yml)
+Then open it and create the first account (an admin), which adds the
+others. See [docker-compose.example.yml](docker-compose.example.yml)
 for every option.
 
 | Variable | Default | |
 |---|---|---|
-| `DOCVAULT_TOKEN` | (required) | Creates the first account; Foyer's widget key |
+| `DOCVAULT_TOKEN` | | Foyer's key for the widget and Drop (no Foyer card without it) |
 | `DOCVAULT_DATA_DIR` | `/data` | Database, files, cache and import folders |
 | `DOCVAULT_PORT` | `8080` | Port inside the container |
 | `HOMEPAGE_URL` | | Foyer's address, linked from the header (admins only) |
@@ -64,20 +64,31 @@ for every option.
 Uploads can be big (multi-page scans are 10–30 MB): allow at least 100 MB
 request bodies in the reverse proxy.
 
+## Accounts
+
+Docvault is meant for one family, reached only over a private network
+(Tailscale): **the username is the whole sign-in**. There are no passwords
+and no sign-up. On a fresh install the sign-in page makes the first
+account, an admin; admins add everyone else under Settings → People. Don't
+put it on the open internet.
+
+Scripts and the Shortcut send the username in the `X-Docvault-User`
+header; the browser gets a session cookie when you sign in.
+
 ## The iPhone Shortcut
 
-Make a token under **Settings → iPhone**, then build a Shortcut (or share
-one and put its iCloud link in Settings → Processing):
+Build a Shortcut (or share one and put its iCloud link in Settings →
+Processing); it asks for the username once:
 
 ```
 Receive  PDFs, Images  from  Share Sheet
 Get Contents of URL  https://docs.example.com/api/categories?format=names
-   Headers: Authorization: Bearer <token>
+   Headers: X-Docvault-User: <username>
 Choose from List  (Contents of URL)
 Ask for Input  "Title?"  (default: Current Date)
 Get Contents of URL
    POST  https://docs.example.com/api/upload
-   Headers:  Authorization: Bearer <token>
+   Headers:  X-Docvault-User: <username>
    Body (Form):  file = Shortcut Input
                  category = Chosen Item
                  title = Provided Input
@@ -89,8 +100,7 @@ Otherwise                           → Show Alert (Contents of URL)
 `ok: already saved as “…”`, or `error: …`) unless the request asks for
 JSON. Other fields: `tags` (comma-separated), `date` (YYYY-MM-DD), `notes`,
 `space` (`family` or `private`). Several files in one request become
-separate documents. API tokens can upload and read but can't change
-account settings.
+separate documents.
 
 ## Suggestions
 
@@ -193,6 +203,6 @@ clear error, and their tests are skipped.
 
 ```sh
 cd frontend && npm install && npm run build && cd ..
-DOCVAULT_TOKEN=dev DOCVAULT_DATA_DIR=./data go run ./cmd/docvault
+DOCVAULT_DATA_DIR=./data go run ./cmd/docvault
 # or, with hot reload: run the binary, then `npm run dev` in frontend/
 ```

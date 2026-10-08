@@ -6,7 +6,7 @@ services:
     restart: unless-stopped
     user: "1000:1000"
     environment:
-      # openssl rand -hex 32; creates the first account, and is Foyer's widget key.
+      # Optional: openssl rand -hex 32; Foyer's key for the widget and Drop.
       - DOCVAULT_TOKEN=${DOCVAULT_TOKEN}
       - TZ=Asia/Kolkata
       # Optional: Foyer's address, linked from the header.

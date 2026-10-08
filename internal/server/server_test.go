@@ -23,11 +23,6 @@ import (
 
 const token = "test-token"
 
-func TestMain(m *testing.M) {
-	pbkdf2Iterations = 1000
-	os.Exit(m.Run())
-}
-
 type harness struct {
 	t    *testing.T
 	h    http.Handler
@@ -52,8 +47,8 @@ func newServer(t *testing.T) *harness {
 	return &harness{t: t, h: s.Handler(), s: s, data: data}
 }
 
-// do sends a request; auth is a cookie ("docvault_session=…"), a bearer
-// token, or "".
+// do sends a request; auth is a cookie ("docvault_session=…"), a username
+// for the header ("user:dad"), a bearer token, or "".
 func (x *harness) do(method, path, body, auth string, headers ...string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(method, path, strings.NewReader(body))
 	if body != "" {
@@ -72,6 +67,8 @@ func (x *harness) auth(req *http.Request, auth string) {
 	switch {
 	case strings.HasPrefix(auth, cookieName+"="):
 		req.Header.Set("Cookie", auth)
+	case strings.HasPrefix(auth, "user:"):
+		req.Header.Set(userHeader, strings.TrimPrefix(auth, "user:"))
 	case auth != "":
 		req.Header.Set("Authorization", "Bearer "+auth)
 	}
@@ -101,11 +98,11 @@ func cookieOf(rec *httptest.ResponseRecorder) string {
 // setup makes the admin "me" and the user "dad", signed in.
 func (x *harness) setup() (me, dad string) {
 	x.t.Helper()
-	rec := x.do("POST", "/api/setup", `{"token":"`+token+`","username":"Me","name":"Aakash","password":"correct horse"}`, "")
+	rec := x.do("POST", "/api/setup", `{"username":"Me","name":"Aakash"}`, "")
 	x.json(rec, 200, nil)
 	me = cookieOf(rec)
-	x.json(x.do("POST", "/api/users", `{"username":"dad","name":"Dad","password":"password1"}`, me), 201, nil)
-	rec = x.do("POST", "/api/session", `{"username":"dad","password":"password1"}`, "")
+	x.json(x.do("POST", "/api/users", `{"username":"dad","name":"Dad"}`, me), 201, nil)
+	rec = x.do("POST", "/api/session", `{"username":"dad"}`, "")
 	x.json(rec, 200, nil)
 	return me, cookieOf(rec)
 }
@@ -155,54 +152,40 @@ func TestSetupAndSignIn(t *testing.T) {
 	if info.Authenticated || !info.SetupNeeded {
 		t.Fatalf("fresh: %+v", info)
 	}
-	x.json(x.do("POST", "/api/setup", `{"token":"nope","username":"me","password":"correct horse"}`, ""), 401, nil)
-	x.json(x.do("POST", "/api/setup", `{"token":"`+token+`","username":"me","password":"short"}`, ""), 400, nil)
+	x.json(x.do("POST", "/api/setup", `{"username":"has space"}`, ""), 400, nil)
 	me, dad := x.setup()
-	x.json(x.do("POST", "/api/setup", `{"token":"`+token+`","username":"x","password":"correct horse"}`, ""), 409, nil)
+	x.json(x.do("POST", "/api/setup", `{"username":"x"}`, ""), 409, nil)
+	x.json(x.do("POST", "/api/users", `{"username":"dad"}`, me), 409, nil)
 
 	x.json(x.do("GET", "/api/session", "", me), 200, &info)
 	if !info.Authenticated || info.User.Username != "me" || !info.User.Admin {
 		t.Fatalf("me: %+v", info)
 	}
-	x.json(x.do("POST", "/api/session", `{"username":"dad","password":"wrong-password"}`, ""), 401, nil)
-	x.json(x.do("POST", "/api/session", `{"username":"nobody","password":"wrong-password"}`, ""), 401, nil)
+	x.json(x.do("POST", "/api/session", `{"username":" DAD "}`, ""), 200, nil)
+	x.json(x.do("POST", "/api/session", `{"username":"nobody"}`, ""), 401, nil)
 	x.json(x.do("GET", "/api/users", "", dad), 403, nil)
 	x.json(x.do("GET", "/api/documents", "", ""), 401, nil)
 	x.json(x.do("GET", "/api/documents", "", token), 401, nil) // DOCVAULT_TOKEN isn't a user
 
-	// Changing the password signs out other sessions.
-	x.json(x.do("PUT", "/api/me", `{"name":"Dad","current_password":"wrong","password":"password2"}`, dad), 403, nil)
-	rec := x.do("PUT", "/api/me", `{"name":"Papa","current_password":"password1","password":"password2"}`, dad)
-	x.json(rec, 200, nil)
-	x.json(x.do("GET", "/api/documents", "", dad), 401, nil)
-	x.json(x.do("GET", "/api/documents", "", cookieOf(rec)), 200, nil)
+	var u store.User
+	x.json(x.do("PUT", "/api/me", `{"name":"Papa"}`, dad), 200, &u)
+	if u.Name != "Papa" {
+		t.Fatalf("name %q", u.Name)
+	}
 
 	x.json(x.do("DELETE", "/api/session", "", me), 204, nil)
 	x.json(x.do("GET", "/api/documents", "", me), 401, nil)
 }
 
-func TestTokens(t *testing.T) {
+// The Shortcut and scripts send the username in a header.
+func TestUserHeader(t *testing.T) {
 	x := newServer(t)
-	_, dad := x.setup()
-	var tok struct {
-		ID    int64  `json:"id"`
-		Token string `json:"token"`
-	}
-	x.json(x.do("POST", "/api/tokens", `{"name":"Dad's iPhone"}`, dad), 201, &tok)
-	if !strings.HasPrefix(tok.Token, tokenPrefix) {
-		t.Fatalf("token %q", tok.Token)
-	}
-	var list []store.APIToken
-	x.json(x.do("GET", "/api/tokens", "", dad), 200, &list)
-	if len(list) != 1 || !strings.HasSuffix(tok.Token, list[0].Hint) {
-		t.Fatalf("list %+v", list)
-	}
-	// A token uploads and reads, but can't manage the account.
-	x.json(x.do("GET", "/api/categories?format=names", "", tok.Token), 200, nil)
-	x.json(x.do("POST", "/api/tokens", `{"name":"another"}`, tok.Token), 403, nil)
-	x.json(x.do("PUT", "/api/me", `{"name":"x"}`, tok.Token), 403, nil)
-	x.json(x.do("DELETE", "/api/tokens/"+itoa(tok.ID), "", dad), 204, nil)
-	x.json(x.do("GET", "/api/documents", "", tok.Token), 401, nil)
+	x.setup()
+	x.json(x.do("GET", "/api/categories?format=names", "", "user:dad"), 200, nil)
+	x.json(x.do("GET", "/api/documents", "", "user:Dad"), 200, nil)
+	x.json(x.do("GET", "/api/users", "", "user:dad"), 403, nil)
+	x.json(x.do("GET", "/api/users", "", "user:me"), 200, nil)
+	x.json(x.do("GET", "/api/documents", "", "user:nobody"), 401, nil)
 }
 
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }
@@ -211,7 +194,7 @@ func TestUploadForShortcut(t *testing.T) {
 	x := newServer(t)
 	me, dad := x.setup()
 
-	rec := x.upload(dad, "", part{"file", "scan.pdf", pdfBytes("one")}, part{"category", "", []byte("medical")},
+	rec := x.upload("user:dad", "", part{"file", "scan.pdf", pdfBytes("one")}, part{"category", "", []byte("medical")},
 		part{"title", "", []byte("Blood test")}, part{"tags", "", []byte("lab, 2024")})
 	if rec.Code != 200 || strings.TrimSpace(rec.Body.String()) != "ok: saved “Blood test”" {
 		t.Fatalf("upload: %d %q", rec.Code, rec.Body)
@@ -371,7 +354,8 @@ func TestCategoriesAndSettings(t *testing.T) {
 func TestCrossOriginRefused(t *testing.T) {
 	x := newServer(t)
 	me, _ := x.setup()
-	x.json(x.do("POST", "/api/tokens", `{"name":"x"}`, me, "Origin", "https://evil.example"), 403, nil)
+	x.json(x.do("PUT", "/api/me", `{"name":"x"}`, me, "Origin", "https://evil.example"), 403, nil)
+	x.json(x.do("PUT", "/api/me", `{"name":"x"}`, me, "Sec-Fetch-Site", "cross-site"), 403, nil)
 }
 
 func TestNames(t *testing.T) {
@@ -528,8 +512,16 @@ func TestFoyerLinkForAdminsOnly(t *testing.T) {
 		t.Fatal("Foyer link shown before sign-in")
 	}
 	info = sessionInfo{}
-	x.json(x.do("POST", "/api/session", `{"username":"dad","password":"password1"}`, ""), 200, &info)
+	x.json(x.do("POST", "/api/session", `{"username":"dad"}`, ""), 200, &info)
 	if info.FoyerURL != "" {
 		t.Fatal("Foyer link in the sign-in answer")
 	}
+}
+
+// Without DOCVAULT_TOKEN there's no Foyer key, and an empty bearer isn't one.
+func TestNoFoyerToken(t *testing.T) {
+	x := newServer(t)
+	x.s.Token = ""
+	x.json(x.do("GET", "/api/foyer/widget", "", ""), 401, nil)
+	x.json(x.do("GET", "/api/foyer/widget", "", "", "Authorization", "Bearer "), 401, nil)
 }
