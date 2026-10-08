@@ -207,14 +207,23 @@ type sessionInfo struct {
 	// SetupNeeded: no accounts yet, so the first one is made with the token.
 	SetupNeeded bool        `json:"setup_needed,omitempty"`
 	User        *store.User `json:"user,omitempty"`
-	// FoyerURL is the homelab's start page, linked from the header.
+	// FoyerURL is the homelab's start page, linked from the header. Only
+	// admins get it: the family uses Docvault, not the rest of the homelab.
 	FoyerURL string `json:"foyer_url,omitempty"`
 }
 
+func (s *Server) signedIn(u *store.User) sessionInfo {
+	info := sessionInfo{Authenticated: true, User: u}
+	if u.Admin {
+		info.FoyerURL = s.FoyerURL
+	}
+	return info
+}
+
 func (s *Server) getSession(w http.ResponseWriter, r *http.Request) {
-	info := sessionInfo{FoyerURL: s.FoyerURL}
+	info := sessionInfo{}
 	if u, viaToken := s.identify(r); u != nil && !viaToken {
-		info.Authenticated, info.User = true, u
+		info = s.signedIn(u)
 	} else if n, err := s.Store.CountUsers(r.Context()); err == nil && n == 0 {
 		info.SetupNeeded = true
 	}
@@ -232,7 +241,7 @@ func (s *Server) startSession(w http.ResponseWriter, r *http.Request, u *store.U
 		MaxAge: int(sessionIdle / time.Second), HttpOnly: true, SameSite: http.SameSiteStrictMode,
 		Secure: r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https",
 	})
-	writeJSON(w, http.StatusOK, sessionInfo{Authenticated: true, User: u, FoyerURL: s.FoyerURL})
+	writeJSON(w, http.StatusOK, s.signedIn(u))
 }
 
 func (s *Server) login(w http.ResponseWriter, r *http.Request) {
