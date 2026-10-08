@@ -1516,3 +1516,20 @@ input[type="date"].input {
   flex-direction: column;
   gap: 8px;
 }
+
+/* iOS zooms into a focused field whose text is under 16px. On touch
+   screens fields use 16px, so the page stays put, and pinch-zoom still
+   works (maximum-scale=1 would also stop that on Android). */
+@media (pointer: coarse) {
+  .input,
+  .input.code,
+  .select,
+  .select-auto,
+  .filters .select,
+  .search input,
+  input:not([type="checkbox"], [type="radio"], [type="file"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
