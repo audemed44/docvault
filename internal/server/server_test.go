@@ -458,11 +458,21 @@ func TestSuggestions(t *testing.T) {
 		list.Documents[0].Suggestion != nil {
 		t.Fatalf("after apply %+v", list.Documents)
 	}
-	// "locker" isn't on the list (the vocabulary was replaced above, so "fd" isn't either).
+	// Applying put "fd" and "locker" on the list (the vocabulary was
+	// replaced above), under the documents' category.
 	var unlisted []store.Count
 	x.json(x.do("GET", "/api/tags/unlisted", "", me), 200, &unlisted)
-	if len(unlisted) != 2 || unlisted[0].Name != "fd" || unlisted[0].Count != 2 {
+	if len(unlisted) != 0 {
 		t.Fatalf("unlisted %+v", unlisted)
+	}
+	var listedTags []store.VocabTag
+	x.json(x.do("GET", "/api/tags", "", me), 200, &listedTags)
+	listed := map[string]int64{}
+	for _, v := range listedTags {
+		listed[v.Name] = v.CategoryID
+	}
+	if listed["fd"] == 0 || listed["fd"] != listed["locker"] {
+		t.Fatalf("vocabulary %+v", listedTags)
 	}
 
 	// Asking again queues them: all matching, or just the selected ones.

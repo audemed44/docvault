@@ -116,6 +116,17 @@ var migrations = []string{
 	// 6: the username is the sign-in: no passwords, no API tokens.
 	`DROP TABLE IF EXISTS api_tokens;
 	ALTER TABLE users DROP COLUMN password`,
+	// 7: tags already on documents join the tag list (as new ones do from
+	// now on), under the category they're used with most; not people.
+	`INSERT OR IGNORE INTO tag_vocab (name, category_id, position)
+	SELECT tag, (SELECT d.category_id FROM document_tags t2 JOIN documents d ON d.id = t2.document_id
+			WHERE t2.tag = t.tag AND d.category_id IS NOT NULL
+			GROUP BY d.category_id ORDER BY count(*) DESC LIMIT 1),
+		(SELECT ifnull(max(position), 0) FROM tag_vocab) + row_number() OVER (ORDER BY tag)
+	FROM (SELECT DISTINCT tag FROM document_tags) t
+	WHERE NOT EXISTS (SELECT 1 FROM tag_vocab v WHERE v.name = t.tag)
+		AND lower(tag) NOT IN (SELECT lower(json_extract(p.value, '$.name'))
+			FROM json_each((SELECT value FROM settings WHERE key = 'settings'), '$.people') p)`,
 }
 
 // Open opens (or creates) the database.

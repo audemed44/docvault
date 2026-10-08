@@ -34,8 +34,8 @@ export function TagsSection(props: { index: number }) {
       <SectionHead index={props.index} title="Tags" />
       <p class="muted page-lede">
         The tags suggestions may use; anything else a model comes up with is dropped. Filing them
-        under a category helps it choose. You can still type any tag on a document yourself.
-        People's names (below) are tags too.
+        under a category helps it choose. A tag you put on a document, or accept from a suggestion,
+        joins the list under that document's category. People's names (below) are tags too.
       </p>
       {(vocab.error || cats.error) && <ErrorNote>{vocab.error || cats.error}</ErrorNote>}
       <div class="vocab">

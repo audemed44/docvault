@@ -166,6 +166,10 @@ func (s *Store) CreateDocument(ctx context.Context, d *Document, addedBy int64) 
 	now := time.Now()
 	d.Created, d.Updated, d.Status = now, now, "pending"
 	d.Tags = cleanTags(d.Tags)
+	people, err := s.peopleTags(ctx)
+	if err != nil {
+		return err
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -186,6 +190,9 @@ func (s *Store) CreateDocument(ctx context.Context, d *Document, addedBy int64) 
 		return err
 	}
 	if err := writeTags(ctx, tx, d.ID, d.Tags); err != nil {
+		return err
+	}
+	if err := listTags(ctx, tx, d.Tags, d.CategoryID, people); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO documents_fts (rowid, title, notes, tags, body) VALUES (?, ?, ?, ?, '')`,
@@ -230,6 +237,37 @@ func cleanTags(tags []string) []string {
 	return out
 }
 
+// peopleTags are the family's names, which are tags but never go on the
+// tag list. Read before a transaction: the store has one connection.
+func (s *Store) peopleTags(ctx context.Context) ([]string, error) {
+	set, err := s.Settings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, len(set.People))
+	for i, p := range set.People {
+		out[i] = p.Name
+	}
+	return out, nil
+}
+
+// listTags puts a document's tags that aren't on the tag list yet on it,
+// under the document's category (or any category without one), so a tag
+// someone adds or accepts is offered next time. Tags already on the list
+// stay where they are; people's names are left out.
+func listTags(ctx context.Context, tx *sql.Tx, tags []string, categoryID int64, people []string) error {
+	for _, t := range tags {
+		if slices.ContainsFunc(people, func(p string) bool { return strings.EqualFold(p, t) }) {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO tag_vocab (name, category_id, position)
+			VALUES (?, ?, (SELECT ifnull(max(position), 0) + 1 FROM tag_vocab))`, t, categoryArg(categoryID)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func writeTags(ctx context.Context, tx *sql.Tx, id int64, tags []string) error {
 	if _, err := tx.ExecContext(ctx, `DELETE FROM document_tags WHERE document_id = ?`, id); err != nil {
 		return err
@@ -248,6 +286,10 @@ func (s *Store) UpdateDocument(ctx context.Context, userID int64, d *Document) e
 	d.Tags = cleanTags(d.Tags)
 	if !d.Family {
 		d.OwnerID = userID
+	}
+	people, err := s.peopleTags(ctx)
+	if err != nil {
+		return err
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -275,6 +317,9 @@ func (s *Store) UpdateDocument(ctx context.Context, userID int64, d *Document) e
 		return err
 	}
 	if err := writeTags(ctx, tx, d.ID, d.Tags); err != nil {
+		return err
+	}
+	if err := listTags(ctx, tx, d.Tags, d.CategoryID, people); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE documents_fts SET title = ?, notes = ?, tags = ? WHERE rowid = ?`,

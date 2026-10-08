@@ -8,8 +8,8 @@ import (
 )
 
 // The tag vocabulary is the list of tags the classifier may suggest, each
-// filed under a category to help it choose. People can still type any tag
-// on a document by hand.
+// filed under a category to help it choose. People can type any tag on a
+// document; saving it puts the tag on the list (see listTags).
 
 // defaultVocab is the starting list, by category (the migration that adds
 // it runs once; after that, admins edit it).
