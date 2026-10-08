@@ -66,6 +66,7 @@ func (s *Server) Handler() http.Handler {
 	api.HandleFunc("PUT /api/categories", adminOnly(s.saveCategories))
 	api.HandleFunc("GET /api/tags", s.listTagVocab)
 	api.HandleFunc("PUT /api/tags", adminOnly(s.saveTagVocab))
+	api.HandleFunc("GET /api/tags/unlisted", adminOnly(s.unlistedTags))
 	api.HandleFunc("POST /api/mask", s.maskPreview)
 	api.HandleFunc("GET /api/settings", s.getSettings)
 	api.HandleFunc("PUT /api/settings", adminOnly(s.saveSettings))

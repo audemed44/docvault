@@ -53,12 +53,16 @@ type Suggest struct {
 	Title    string   `json:"title,omitempty"`
 	Category string   `json:"category,omitempty"`
 	Tags     []string `json:"tags,omitempty"`
-	DocDate  string   `json:"doc_date,omitempty"`
-	Expires  string   `json:"expires,omitempty"`
+	// NewTags are tags the classifier proposes that aren't on the tag
+	// list (yet): shown apart, and added to the document when applied.
+	NewTags []string `json:"new_tags,omitempty"`
+	DocDate string   `json:"doc_date,omitempty"`
+	Expires string   `json:"expires,omitempty"`
 }
 
 func (s *Suggest) Empty() bool {
-	return s == nil || (s.Title == "" && s.Category == "" && len(s.Tags) == 0 && s.DocDate == "" && s.Expires == "")
+	return s == nil || (s.Title == "" && s.Category == "" && len(s.Tags) == 0 && len(s.NewTags) == 0 &&
+		s.DocDate == "" && s.Expires == "")
 }
 
 const docCols = `d.id, d.owner_id, ifnull(a.name, ''), d.title, ifnull(d.category_id, 0), ifnull(c.name, ''),
@@ -632,6 +636,8 @@ type Job struct {
 	Text       string
 	// WantSuggestion: someone asked for a suggestion for it.
 	WantSuggestion bool
+	// OwnerID is whose library it's in (0: the Family space).
+	OwnerID int64
 }
 
 // JobResult is what processing found out.
@@ -661,8 +667,8 @@ func (s *Store) ClaimJob(ctx context.Context) (*Job, error) {
 	var j Job
 	err := s.db.QueryRowContext(ctx, `UPDATE documents SET status = 'processing', error = ''
 		WHERE id = (SELECT id FROM documents WHERE status = 'pending' ORDER BY id LIMIT 1)
-		RETURNING id, file_path, mime, force_ocr, ocr_lang, title, text_source, want_suggestion`).
-		Scan(&j.ID, &j.FilePath, &j.Mime, &j.ForceOCR, &j.OCRLang, &j.Title, &j.TextSource, &j.WantSuggestion)
+		RETURNING id, file_path, mime, force_ocr, ocr_lang, title, text_source, want_suggestion, ifnull(owner_id, 0)`).
+		Scan(&j.ID, &j.FilePath, &j.Mime, &j.ForceOCR, &j.OCRLang, &j.Title, &j.TextSource, &j.WantSuggestion, &j.OwnerID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}

@@ -1,6 +1,7 @@
 import type {
   APIToken,
   Category,
+  Count,
   Doc,
   DocList,
   Facets,
@@ -148,6 +149,7 @@ export const api = {
     request<Settings>("/api/settings", json("PUT", s)),
   tagVocab: () => request<VocabTag[]>("/api/tags"),
   saveTagVocab: (tags: VocabTag[]) => request<VocabTag[]>("/api/tags", json("PUT", tags)),
+  unlistedTags: () => request<Count[]>("/api/tags/unlisted"),
   mask: (text: string) => request<{ text: string }>("/api/mask", json("POST", { text })),
 
   facets: () => request<Facets>("/api/facets"),

@@ -192,3 +192,30 @@ func TestVocab(t *testing.T) {
 		t.Fatal(ids, err)
 	}
 }
+
+func TestUsedTagsScope(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+	me, dad := addUser(t, s, "me"), addUser(t, s, "dad")
+	mine := addDoc(t, s, me, false, "Mine", "a", "")
+	mine.Tags = []string{"travel"}
+	s.UpdateDocument(ctx, me.ID, mine)
+	shared := addDoc(t, s, me, true, "Shared", "b", "")
+	shared.Tags, shared.Family = []string{"house"}, true
+	s.UpdateDocument(ctx, me.ID, shared)
+	private := addDoc(t, s, dad, false, "Dad's", "c", "")
+	private.Tags = []string{"secret-thing"}
+	s.UpdateDocument(ctx, dad.ID, private)
+
+	used, _ := s.UsedTags(ctx, me.ID)
+	if strings.Join(used, ",") != "house,travel" {
+		t.Fatalf("mine: %v", used)
+	}
+	if used, _ := s.UsedTags(ctx, 0); strings.Join(used, ",") != "house" {
+		t.Fatalf("family: %v", used)
+	}
+	unlisted, _ := s.UnlistedTags(ctx, dad.ID)
+	if len(unlisted) != 2 {
+		t.Fatalf("dad's unlisted: %+v", unlisted)
+	}
+}

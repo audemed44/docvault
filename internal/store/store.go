@@ -251,21 +251,3 @@ func (s *Store) Settings(ctx context.Context) (Settings, error) {
 func (s *Store) SaveSettings(ctx context.Context, set Settings) error {
 	return s.Put(ctx, "settings", set)
 }
-
-// TagNames are every tag in use, for the classifier to reuse.
-func (s *Store) TagNames(ctx context.Context) ([]string, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT tag FROM document_tags GROUP BY tag ORDER BY count(*) DESC LIMIT 300`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []string{}
-	for rows.Next() {
-		var t string
-		if err := rows.Scan(&t); err != nil {
-			return nil, err
-		}
-		out = append(out, t)
-	}
-	return out, rows.Err()
-}

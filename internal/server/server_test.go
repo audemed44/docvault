@@ -447,7 +447,7 @@ func TestSuggestions(t *testing.T) {
 	for range 2 {
 		job, _ := x.s.Store.ClaimJob(ctx)
 		x.s.Store.FinishJob(ctx, job.ID, store.JobResult{Pages: 1, TextSource: "pdf", Text: "text", Classified: true,
-			ClassifierInput: "Title: a\n\ntext", Suggestion: &store.Suggest{Title: "Renamed", Category: "Banking", Tags: []string{"fd"}}})
+			ClassifierInput: "Title: a\n\ntext", Suggestion: &store.Suggest{Title: "Renamed", Category: "Banking", Tags: []string{"fd"}, NewTags: []string{"locker"}}})
 	}
 	var facets store.Facets
 	x.json(x.do("GET", "/api/facets", "", me), 200, &facets)
@@ -470,8 +470,15 @@ func TestSuggestions(t *testing.T) {
 		t.Fatal("still in the inbox")
 	}
 	x.json(x.do("GET", "/api/documents?q=renamed", "", me), 200, &list)
-	if len(list.Documents) != 2 || list.Documents[0].Category != "Banking" || list.Documents[0].Tags[0] != "fd" || list.Documents[0].Suggestion != nil {
+	if len(list.Documents) != 2 || list.Documents[0].Category != "Banking" || strings.Join(list.Documents[0].Tags, ",") != "fd,locker" ||
+		list.Documents[0].Suggestion != nil {
 		t.Fatalf("after apply %+v", list.Documents)
+	}
+	// "locker" isn't on the list (the vocabulary was replaced above, so "fd" isn't either).
+	var unlisted []store.Count
+	x.json(x.do("GET", "/api/tags/unlisted", "", me), 200, &unlisted)
+	if len(unlisted) != 2 || unlisted[0].Name != "fd" || unlisted[0].Count != 2 {
+		t.Fatalf("unlisted %+v", unlisted)
 	}
 
 	// Asking again queues them: all matching, or just the selected ones.

@@ -246,3 +246,41 @@ func TestWantsSuggestion(t *testing.T) {
 		t.Fatal("auto")
 	}
 }
+
+func TestNewTags(t *testing.T) {
+	in := Input{Categories: []CategoryTags{{Name: "Bills"}}, Tags: []string{"invoice", "[person:1]"}}
+	sg := Sanitize(store.Suggest{Category: "Bills", NewTags: []string{"Airline Ticket", "INVOICE", "[person:1]", "x", "travel", "third"}},
+		in, []mask.Person{{Name: "Pranav"}})
+	if strings.Join(sg.NewTags, ",") != "airline-ticket,travel" || strings.Join(sg.Tags, ",") != "invoice" {
+		t.Fatalf("%+v", sg)
+	}
+	if s := Sanitize(store.Suggest{NewTags: []string{"boarding-pass"}}, in, nil); s == nil || s.NewTags[0] != "boarding-pass" {
+		t.Fatalf("new tags alone: %+v", s)
+	}
+}
+
+func TestUsedTagsInPrompt(t *testing.T) {
+	p, st, u := setup(t)
+	ctx := context.Background()
+	st.SaveSettings(ctx, store.Settings{People: []mask.Person{{Name: "Pranav"}}})
+	// Tags in use: one on the list, a person, and one that isn't listed.
+	d := &store.Document{OwnerID: u.ID, Title: "a", DocDate: "2024-01-01", FileName: "a.pdf", Mime: "application/pdf", SHA256: "a",
+		Tags: []string{"pan", "Pranav", "airline-ticket"}}
+	st.CreateDocument(ctx, d, u.ID)
+	fake := newFakeModel(t, `{"title":"","category":"","tags":[],"new_tags":["Boarding Pass"],"doc_date":"","expires":""}`)
+	p.Classifier = NewLLM(fake.srv.URL+"/v1", "test-key", "m")
+	job, _ := st.ClaimJob(ctx)
+	res := store.JobResult{Text: "INDIGO boarding pass", TextSource: "pdf"}
+	p.classify(ctx, job, &res)
+	sent := fake.requests[0].Messages[1].Content
+	if !strings.Contains(sent, "Other tags already in use (for new_tags): airline-ticket\n") {
+		t.Fatalf("prompt:\n%s", sent)
+	}
+	schemaJSON, _ := json.Marshal(fake.requests[0].ResponseFormat)
+	if !strings.Contains(string(schemaJSON), `"new_tags"`) {
+		t.Fatal("schema has no new_tags")
+	}
+	if res.Suggestion == nil || res.Suggestion.NewTags[0] != "boarding-pass" {
+		t.Fatalf("suggestion %+v", res.Suggestion)
+	}
+}

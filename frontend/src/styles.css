@@ -1511,3 +1511,8 @@ input[type="date"].input {
 .row-selected td {
   background: rgb(var(--accent-rgb) / 0.08);
 }
+.unlisted {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
