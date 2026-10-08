@@ -680,6 +680,8 @@ type Job struct {
 	TextSource string
 	Text       string
 	Pages      int
+	// Error is why reading failed, for a job claimed for its suggestion.
+	Error string
 	// WantSuggestion: someone asked for a suggestion for it.
 	WantSuggestion bool
 	// OwnerID is whose library it's in (0: the Family space).
@@ -708,13 +710,25 @@ func (s *Store) ResetJobs(ctx context.Context) error {
 	return err
 }
 
-// ClaimJob takes the oldest waiting document, or returns ErrNotFound.
+// ClaimJob takes the oldest document waiting to be read, or returns
+// ErrNotFound.
 func (s *Store) ClaimJob(ctx context.Context) (*Job, error) {
+	return s.claim(ctx, `UPDATE documents SET status = 'processing', error = ''
+		WHERE id = (SELECT id FROM documents WHERE status = 'pending' AND NOT read_done ORDER BY id LIMIT 1)`)
+}
+
+// ClaimSuggestion takes the oldest document that was read and waits for
+// its suggestion, or returns ErrNotFound.
+func (s *Store) ClaimSuggestion(ctx context.Context) (*Job, error) {
+	return s.claim(ctx, `UPDATE documents SET status = 'processing'
+		WHERE id = (SELECT id FROM documents WHERE status = 'pending' AND read_done ORDER BY id LIMIT 1)`)
+}
+
+func (s *Store) claim(ctx context.Context, update string) (*Job, error) {
 	var j Job
-	err := s.db.QueryRowContext(ctx, `UPDATE documents SET status = 'processing', error = ''
-		WHERE id = (SELECT id FROM documents WHERE status = 'pending' ORDER BY id LIMIT 1)
-		RETURNING id, file_path, mime, force_ocr, ocr_lang, title, text_source, pages, want_suggestion, ifnull(owner_id, 0)`).
-		Scan(&j.ID, &j.FilePath, &j.Mime, &j.ForceOCR, &j.OCRLang, &j.Title, &j.TextSource, &j.Pages, &j.WantSuggestion, &j.OwnerID)
+	err := s.db.QueryRowContext(ctx, update+`
+		RETURNING id, file_path, mime, force_ocr, ocr_lang, title, text_source, pages, error, want_suggestion, ifnull(owner_id, 0)`).
+		Scan(&j.ID, &j.FilePath, &j.Mime, &j.ForceOCR, &j.OCRLang, &j.Title, &j.TextSource, &j.Pages, &j.Error, &j.WantSuggestion, &j.OwnerID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -731,8 +745,27 @@ func (s *Store) ClaimJob(ctx context.Context) (*Job, error) {
 // FinishJob saves what processing found, unless the document was queued
 // again (or deleted) meanwhile.
 func (s *Store) FinishJob(ctx context.Context, id int64, r JobResult) error {
+	return s.saveJob(ctx, id, r, false, false)
+}
+
+// ReadDone saves what reading found, and queues the document for its
+// suggestion (ClaimSuggestion), keeping any error from reading.
+func (s *Store) ReadDone(ctx context.Context, id int64, r JobResult) error {
+	return s.saveJob(ctx, id, r, false, true)
+}
+
+// FinishSuggestion saves a job claimed with ClaimSuggestion.
+func (s *Store) FinishSuggestion(ctx context.Context, id int64, r JobResult) error {
+	return s.saveJob(ctx, id, r, true, false)
+}
+
+// saveJob saves a job claimed as read (wasRead: by ClaimSuggestion),
+// unless it was queued again meanwhile.
+func (s *Store) saveJob(ctx context.Context, id int64, r JobResult, wasRead, suggestNext bool) error {
 	status := "ready"
-	if r.Error != "" {
+	if suggestNext {
+		status = "pending"
+	} else if r.Error != "" {
 		status = "failed"
 	}
 	suggestion := ""
@@ -750,13 +783,13 @@ func (s *Store) FinishJob(ctx context.Context, id int64, r JobResult) error {
 	}
 	defer tx.Rollback()
 	res, err := tx.ExecContext(ctx, `UPDATE documents SET status = ?, error = ?, pages = ?, text_source = ?,
-		ocr_lang = ?, force_ocr = 0, want_suggestion = 0, classify_error = ?,
+		ocr_lang = ?, force_ocr = 0, read_done = ?, want_suggestion = ?, classify_error = ?,
 		suggestion = CASE WHEN ? THEN ? ELSE suggestion END,
 		classified = CASE WHEN ? THEN ? ELSE classified END,
 		classifier_input = CASE WHEN ? != '' THEN ? ELSE classifier_input END
-		WHERE id = ? AND status = 'processing'`,
-		status, r.Error, r.Pages, r.TextSource, r.OCRLang, r.ClassifyError,
-		r.Classified, suggestion, r.Classified, classified, r.ClassifierInput, r.ClassifierInput, id)
+		WHERE id = ? AND status = 'processing' AND read_done = ?`,
+		status, r.Error, r.Pages, r.TextSource, r.OCRLang, suggestNext, suggestNext, r.ClassifyError,
+		r.Classified, suggestion, r.Classified, classified, r.ClassifierInput, r.ClassifierInput, id, wasRead)
 	if err != nil {
 		return err
 	}
@@ -769,14 +802,25 @@ func (s *Store) FinishJob(ctx context.Context, id int64, r JobResult) error {
 	return tx.Commit()
 }
 
+// ReadAgain sends a document claimed for its suggestion back to be read
+// first (its thumbnail or PDF is missing).
+func (s *Store) ReadAgain(ctx context.Context, id int64) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE documents SET status = 'pending', read_done = 0
+		WHERE id = ? AND status = 'processing' AND read_done`, id)
+	return err
+}
+
 // Requeue processes a document the user may see again, with OCR forced
 // when forceOCR is set (in lang, or the default when it's empty), and a
-// suggestion asked for when suggest is set.
+// suggestion asked for when suggest is set. A suggestion alone for a
+// document that was read goes straight to the suggestion queue.
 func (s *Store) Requeue(ctx context.Context, userID, id int64, forceOCR bool, lang string, suggest bool) error {
 	res, err := s.db.ExecContext(ctx, `UPDATE documents SET status = 'pending', error = '', force_ocr = ?,
 		ocr_lang = CASE WHEN ? THEN ? ELSE ocr_lang END,
-		want_suggestion = CASE WHEN ? THEN 1 ELSE want_suggestion END
-		WHERE id = ? AND (owner_id = ? OR owner_id IS NULL)`, forceOCR, forceOCR, lang, suggest, id, userID)
+		want_suggestion = CASE WHEN ? THEN 1 ELSE want_suggestion END,
+		read_done = ? AND NOT ? AND text_source != '' AND pages > 0
+			AND NOT (status IN ('pending', 'processing') AND NOT read_done)
+		WHERE id = ? AND (owner_id = ? OR owner_id IS NULL)`, forceOCR, forceOCR, lang, suggest, suggest, forceOCR, id, userID)
 	if err != nil {
 		return err
 	}

@@ -3,8 +3,8 @@
 // the text (the PDF's own text layer, or Tesseract OCR when there's none).
 // Then the optional classifier suggests a category and tags.
 //
-// One document at a time, in the background, with poppler and tesseract as
-// short-lived child processes, so the server itself stays small.
+// In the background, with poppler and tesseract as short-lived child
+// processes (one page at a time), so the server itself stays small.
 package process
 
 import (
@@ -34,6 +34,14 @@ const (
 	stepTimeout = 5 * time.Minute
 )
 
+// Worker limits: reading (OCR) is memory-bound, a suggestion is a small
+// HTTP request that mostly waits on the model.
+const (
+	MaxOCRWorkers         = 8
+	MaxSuggestWorkers     = 32
+	DefaultSuggestWorkers = 8
+)
+
 type Options struct {
 	Store *store.Store
 	// Files holds the originals, Cache the derived files (photo PDFs and
@@ -41,72 +49,155 @@ type Options struct {
 	Files, Cache string
 	// Classifier, when set, suggests a category and tags for each document.
 	Classifier Classifier
-	// Workers is how many documents are processed at once (at least 1).
-	// Each OCR peaks around 460 MB.
+	// Workers is how many documents are read at once when the settings
+	// don't say (at least 1). Each OCR peaks around 460 MB.
 	Workers int
 }
 
 type Processor struct {
 	Options
-	wake chan struct{}
+	readWake, suggestWake chan struct{}
 }
 
 func New(o Options) *Processor {
-	return &Processor{Options: o, wake: make(chan struct{}, 1)}
+	return &Processor{Options: o, readWake: make(chan struct{}, 1), suggestWake: make(chan struct{}, 1)}
 }
 
-// Wake tells a worker there's something new in the queue.
+// Wake tells the workers there's something new in the queue, or that the
+// settings changed.
 func (p *Processor) Wake() {
+	poke(p.readWake)
+	poke(p.suggestWake)
+}
+
+func poke(c chan struct{}) {
 	select {
-	case p.wake <- struct{}{}:
+	case c <- struct{}{}:
 	default:
 	}
 }
 
-// Run processes queued documents until ctx is done.
+// Limits are how many documents are read at once and how many suggestions
+// are asked for at once: the settings, else the defaults.
+func (p *Processor) Limits(set store.Settings) (read, suggest int) {
+	read, suggest = set.OCRWorkers, set.SuggestWorkers
+	if read < 1 {
+		read = p.Workers
+	}
+	if suggest < 1 {
+		suggest = DefaultSuggestWorkers
+	}
+	return min(max(read, 1), MaxOCRWorkers), min(suggest, MaxSuggestWorkers)
+}
+
+// Run processes queued documents until ctx is done: one pool of workers
+// reads them, another asks for their suggestions, so a long OCR doesn't
+// hold up suggestions and suggestions don't wait on each other.
 func (p *Processor) Run(ctx context.Context) {
 	if err := p.Store.ResetJobs(ctx); err != nil {
 		slog.Error("processing: reset the queue", "err", err)
 	}
 	var wg sync.WaitGroup
-	for range max(p.Workers, 1) {
-		wg.Go(func() { p.work(ctx) })
-	}
+	wg.Go(func() {
+		p.pool(ctx, p.readWake, func(set store.Settings) int { n, _ := p.Limits(set); return n },
+			p.Store.ClaimJob, p.readJob)
+	})
+	wg.Go(func() {
+		p.pool(ctx, p.suggestWake, func(set store.Settings) int { _, n := p.Limits(set); return n },
+			p.Store.ClaimSuggestion, p.suggestJob)
+	})
 	wg.Wait()
 }
 
-// work takes documents from the queue one at a time. Claiming is atomic, so
-// workers never get the same one.
-func (p *Processor) work(ctx context.Context) {
+// pool runs up to limit jobs at once, checking the limit (a setting)
+// whenever one finishes or it's woken. Claiming is atomic, so workers never
+// get the same document.
+func (p *Processor) pool(ctx context.Context, wake chan struct{}, limit func(store.Settings) int,
+	claim func(context.Context) (*store.Job, error), do func(context.Context, *store.Job)) {
+	var wg sync.WaitGroup
+	defer wg.Wait()
+	done := make(chan struct{})
+	running := 0
 	for {
-		for ctx.Err() == nil {
-			job, err := p.Store.ClaimJob(ctx)
+		set, _ := p.Store.Settings(ctx) // the defaults when it fails
+		for n := limit(set); running < n && ctx.Err() == nil; {
+			job, err := claim(ctx)
 			if errors.Is(err, store.ErrNotFound) {
 				break
 			}
 			if err != nil {
-				slog.Error("processing: next job", "err", err)
+				if ctx.Err() == nil {
+					slog.Error("processing: next job", "err", err)
+				}
 				break
 			}
-			p.Wake() // another idle worker may take the next one
-			start := time.Now()
-			res := p.process(ctx, job)
-			if ctx.Err() != nil {
-				return // shutting down: ResetJobs queues it again next time
-			}
-			if err := p.Store.FinishJob(ctx, job.ID, res); err != nil {
-				slog.Error("processing: save", "document", job.ID, "err", err)
-			}
-			slog.Info("processed", "document", job.ID, "pages", res.Pages, "text", res.TextSource,
-				"took", time.Since(start).Round(time.Millisecond), "err", res.Error)
+			running++
+			wg.Go(func() {
+				do(ctx, job)
+				select {
+				case done <- struct{}{}:
+				case <-ctx.Done():
+				}
+			})
 		}
 		select {
 		case <-ctx.Done():
 			return
-		case <-p.wake:
+		case <-done:
+			running--
+		case <-wake:
 		case <-time.After(time.Minute):
 		}
 	}
+}
+
+// readJob makes a document's PDF, thumbnail and text, then hands it to the
+// suggestion workers when it wants a suggestion.
+func (p *Processor) readJob(ctx context.Context, job *store.Job) {
+	start := time.Now()
+	res := p.read(ctx, job)
+	if ctx.Err() != nil {
+		return // shutting down: ResetJobs queues it again next time
+	}
+	var err error
+	// Even a file that couldn't be read can be classified from its name.
+	suggest := p.wantsSuggestion(ctx, job)
+	if suggest {
+		err = p.Store.ReadDone(ctx, job.ID, res)
+		poke(p.suggestWake)
+	} else {
+		err = p.Store.FinishJob(ctx, job.ID, res)
+	}
+	if err != nil {
+		slog.Error("processing: save", "document", job.ID, "err", err)
+	}
+	slog.Info("read", "document", job.ID, "pages", res.Pages, "text", res.TextSource,
+		"took", time.Since(start).Round(time.Millisecond), "err", res.Error, "suggestion", suggest)
+}
+
+// suggestJob asks the classifier about a document that was read.
+func (p *Processor) suggestJob(ctx context.Context, job *store.Job) {
+	if job.Error == "" && !p.cached(job) {
+		// Read before, but its thumbnail or PDF is gone: read it again.
+		if err := p.Store.ReadAgain(ctx, job.ID); err != nil {
+			slog.Error("processing: requeue", "document", job.ID, "err", err)
+		}
+		poke(p.readWake)
+		return
+	}
+	start := time.Now()
+	res := store.JobResult{Pages: job.Pages, Text: job.Text, TextSource: job.TextSource, OCRLang: job.OCRLang, Error: job.Error}
+	if p.Classifier != nil {
+		p.classify(ctx, job, &res)
+	}
+	if ctx.Err() != nil {
+		return
+	}
+	if err := p.Store.FinishSuggestion(ctx, job.ID, res); err != nil {
+		slog.Error("processing: save", "document", job.ID, "err", err)
+	}
+	slog.Info("suggested", "document", job.ID, "took", time.Since(start).Round(time.Millisecond),
+		"err", res.ClassifyError)
 }
 
 // CachePDF is the PDF made from a photo document.
@@ -121,28 +212,9 @@ func (p *Processor) Thumb(id int64) string {
 
 func IsImage(mime string) bool { return strings.HasPrefix(mime, "image/") }
 
-func (p *Processor) process(ctx context.Context, job *store.Job) store.JobResult {
-	var res store.JobResult
-	if p.readBefore(job) {
-		// Only a suggestion was asked for: keep what was read last time.
-		res = store.JobResult{Pages: job.Pages, Text: job.Text, TextSource: job.TextSource, OCRLang: job.OCRLang}
-	} else {
-		res = p.read(ctx, job)
-	}
-	// Even a file that couldn't be read can be classified from its name.
-	if p.wantsSuggestion(ctx, job) {
-		p.classify(ctx, job, &res)
-	}
-	return res
-}
-
-// readBefore says a document queued only for a suggestion was read
-// already: it has its text and thumbnail (and a photo its PDF). Uploads and
-// Run OCR again are read in full.
-func (p *Processor) readBefore(job *store.Job) bool {
-	if !job.WantSuggestion || job.ForceOCR || job.TextSource == "" || job.Pages == 0 {
-		return false
-	}
+// cached says the derived files of a document that was read are there:
+// its thumbnail, and a photo's PDF.
+func (p *Processor) cached(job *store.Job) bool {
 	if _, err := os.Stat(p.Thumb(job.ID)); err != nil {
 		return false
 	}

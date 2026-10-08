@@ -53,7 +53,7 @@ for every option.
 | `DOCVAULT_TOKEN` | | Foyer's key for the widget and Drop (no Foyer card without it) |
 | `DOCVAULT_DATA_DIR` | `/data` | Database, files, cache and import folders |
 | `DOCVAULT_PORT` | `8080` | Port inside the container |
-| `DOCVAULT_WORKERS` | `1` | Documents processed at once (up to 8); give each ~500 MB of `mem_limit` |
+| `DOCVAULT_WORKERS` | `1` | Documents read (OCR'd) at once (up to 8) until Settings → Processing → Read at once changes it; give each ~500 MB of `mem_limit` |
 | `HOMEPAGE_URL` | | Foyer's address, linked from the header (admins only) |
 | `DOCVAULT_LLM_KEY` | | API key for suggestions from a chat model (below) |
 | `DOCVAULT_LLM_MODEL` | | The model, e.g. an OpenRouter model ID |
@@ -116,6 +116,10 @@ Nothing changes until someone applies it.
   every new document instead.
 - The library shows how many suggestions are waiting, to **Review** and
   **Apply all**, or apply just the selected ones.
+- **At once:** suggestions have their own workers, separate from OCR, so
+  several documents go to the model at the same time (8 by default, up to
+  32: Settings → Suggestions → At once). A document that was read already
+  isn't read again for a suggestion.
 
 - **Often just the name is sent.** By default (Settings → Suggestions →
   Send: "auto"), a document whose name says what it is ("Dad passport

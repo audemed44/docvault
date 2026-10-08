@@ -154,7 +154,7 @@ func TestOCRTextKept(t *testing.T) {
 	if job.TextSource != "ocr" || job.OCRLang != "eng" || !strings.HasPrefix(job.Text, "earlier") {
 		t.Fatalf("job %+v", job)
 	}
-	res := p.process(ctx, job)
+	res := p.read(ctx, job)
 	if res.TextSource != "ocr" || !strings.HasPrefix(res.Text, "earlier") {
 		t.Fatalf("result %+v", res)
 	}
@@ -334,20 +334,32 @@ func TestSuggestionOnlyKeepsReading(t *testing.T) {
 	if err := st.Requeue(ctx, u.ID, d.ID, false, "", true); err != nil {
 		t.Fatal(err)
 	}
-	job, _ = st.ClaimJob(ctx)
-	res := p.process(ctx, job)
-	if res.Error != "" || res.Pages != 3 || res.TextSource != "ocr" || res.Text != "MSEDCL electricity bill" {
-		t.Fatalf("read again: %+v", res)
+	if _, err := st.ClaimJob(ctx); err == nil {
+		t.Fatal("queued to be read again")
 	}
-	if res.Suggestion == nil || res.Suggestion.Category != "Bills" || len(fake.requests) != 1 {
-		t.Fatalf("suggestion %+v", res.Suggestion)
+	job, _ = st.ClaimSuggestion(ctx)
+	p.suggestJob(ctx, job)
+	got, _ := st.Document(ctx, u.ID, d.ID)
+	if got.Status != "ready" || got.Pages != 3 || got.TextSource != "ocr" || got.OCRLang != "eng" {
+		t.Fatalf("read again: %+v", got)
+	}
+	if got.Suggestion == nil || got.Suggestion.Category != "Bills" || len(fake.requests) != 1 {
+		t.Fatalf("suggestion %+v", got.Suggestion)
+	}
+
+	// Its thumbnail is gone: it's read again first.
+	os.Remove(p.Thumb(d.ID))
+	st.Requeue(ctx, u.ID, d.ID, false, "", true)
+	job, _ = st.ClaimSuggestion(ctx)
+	p.suggestJob(ctx, job)
+	if job, err := st.ClaimJob(ctx); err != nil || !job.WantSuggestion || len(fake.requests) != 1 {
+		t.Fatalf("not sent to be read: %+v %v", job, err)
 	}
 
 	// Run OCR again reads it in full (and fails here, with no file).
-	st.FinishJob(ctx, job.ID, res)
 	st.Requeue(ctx, u.ID, d.ID, true, "eng", false)
 	job, _ = st.ClaimJob(ctx)
-	if res := p.process(ctx, job); res.Error == "" {
+	if res := p.read(ctx, job); res.Error == "" {
 		t.Fatal("Run OCR again didn't read the file")
 	}
 }

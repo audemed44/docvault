@@ -637,6 +637,9 @@ a.note:hover {
 .input:focus {
   border-color: var(--accent);
 }
+.input.input-number {
+  width: 96px;
+}
 .input.code {
   font-family: var(--font-mono);
   font-size: 12.5px;

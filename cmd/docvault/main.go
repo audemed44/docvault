@@ -137,8 +137,9 @@ func foyerURL() string {
 	return u
 }
 
-// workers is DOCVAULT_WORKERS: how many documents are processed at once
-// (1–8). Each OCR peaks around 460 MB, so raise mem_limit with it.
+// workers is DOCVAULT_WORKERS: how many documents are read at once (1–8)
+// until Settings says otherwise. Each OCR peaks around 460 MB, so raise
+// mem_limit with it.
 func workers() int {
 	n, err := strconv.Atoi(os.Getenv("DOCVAULT_WORKERS"))
 	if err != nil || n < 1 {

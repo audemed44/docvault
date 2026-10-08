@@ -127,6 +127,9 @@ var migrations = []string{
 	WHERE NOT EXISTS (SELECT 1 FROM tag_vocab v WHERE v.name = t.tag)
 		AND lower(tag) NOT IN (SELECT lower(json_extract(p.value, '$.name'))
 			FROM json_each((SELECT value FROM settings WHERE key = 'settings'), '$.people') p)`,
+	// 8: the document has been read and waits only for its suggestion
+	// (asked for by its own pool of workers).
+	`ALTER TABLE documents ADD COLUMN read_done INTEGER NOT NULL DEFAULT 0`,
 }
 
 // Open opens (or creates) the database.
@@ -242,6 +245,11 @@ type Settings struct {
 	// SuggestNew is "ask" (suggestions only when someone asks for them) or
 	// "auto" (every document, once it's read).
 	SuggestNew string `json:"suggest_new"`
+	// OCRWorkers is how many documents are read (OCR'd) at once, and
+	// SuggestWorkers how many suggestions are asked for at once; 0 is the
+	// default (see process.Limits).
+	OCRWorkers     int `json:"ocr_workers"`
+	SuggestWorkers int `json:"suggest_workers"`
 }
 
 func (s *Store) Settings(ctx context.Context) (Settings, error) {

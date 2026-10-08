@@ -150,6 +150,45 @@ func TestJobsAndCategories(t *testing.T) {
 		t.Fatalf("finished %+v", got)
 	}
 
+	// A suggestion for a document that wasn't read (no pages) reads it
+	// first; the error from reading is kept.
+	s.Requeue(ctx, me.ID, d.ID, false, "", true)
+	j, _ = s.ClaimJob(ctx)
+	if j == nil || j.ID != d.ID {
+		t.Fatalf("not read first: %+v", j)
+	}
+	s.ReadDone(ctx, d.ID, JobResult{Pages: 2, TextSource: "pdf", Text: "a statement", Error: "thumbnail: x"})
+	j, _ = s.ClaimSuggestion(ctx)
+	if j == nil || j.Error != "thumbnail: x" {
+		t.Fatalf("handed over %+v", j)
+	}
+	s.FinishSuggestion(ctx, d.ID, JobResult{Pages: 2, TextSource: "pdf", Text: "a statement", Error: j.Error})
+	if got, _ := s.Document(ctx, me.ID, d.ID); got.Status != "failed" {
+		t.Fatalf("finished %+v", got)
+	}
+	// Read now: a suggestion skips reading.
+	s.Requeue(ctx, me.ID, d.ID, false, "", true)
+	if _, err := s.ClaimJob(ctx); !errors.Is(err, ErrNotFound) {
+		t.Fatal("read again for a suggestion")
+	}
+	j, _ = s.ClaimSuggestion(ctx)
+	if j.Text != "a statement" || j.Pages != 2 || !j.WantSuggestion {
+		t.Fatalf("suggestion job %+v", j)
+	}
+	// Run OCR again meanwhile: the suggestion worker's result is dropped,
+	// and it's read in full first.
+	s.Requeue(ctx, me.ID, d.ID, true, "eng", false)
+	j, _ = s.ClaimJob(ctx)
+	s.FinishSuggestion(ctx, d.ID, JobResult{Pages: 2, Error: "stale"})
+	if got, _ := s.Document(ctx, me.ID, d.ID); got.Status != "processing" {
+		t.Fatalf("stale result saved: %+v", got)
+	}
+	s.ReadDone(ctx, j.ID, JobResult{Pages: 2, TextSource: "ocr", Text: "read", Error: "OCR: hmm"})
+	j, _ = s.ClaimSuggestion(ctx)
+	if j == nil || j.Error != "OCR: hmm" || !j.WantSuggestion || j.Text != "read" {
+		t.Fatalf("handed over %+v", j)
+	}
+
 	cats, _ := s.Categories(ctx, me.ID)
 	cats[0].Name, cats[1].Name = cats[1].Name, cats[0].Name // swap
 	cats = append(cats[:2], Category{Name: "Pets"})

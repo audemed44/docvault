@@ -361,11 +361,14 @@ function ProcessingSection(props: {
   onSaved: (s: Settings) => void;
 }) {
   const [s, setS] = useState(props.settings);
+  const [atOnce, setAtOnce] = useState(String(props.settings.ocr_workers));
   const { busy, error, run } = useAction();
   const langs = s.languages.length ? s.languages : ["eng", "hin"];
   const options = Array.from(new Set([...langs, langs.join("+"), s.ocr_langs]));
   const dirty =
-    s.ocr_langs !== props.settings.ocr_langs || s.shortcut_url !== props.settings.shortcut_url;
+    s.ocr_langs !== props.settings.ocr_langs ||
+    s.shortcut_url !== props.settings.shortcut_url ||
+    atOnce !== String(props.settings.ocr_workers);
   return (
     <section class="section">
       <SectionHead index={props.index} title="Processing" />
@@ -379,6 +382,7 @@ function ProcessingSection(props: {
                 ...props.settings,
                 ocr_langs: s.ocr_langs,
                 shortcut_url: s.shortcut_url,
+                ocr_workers: Number(atOnce) || 0,
               }),
             ),
           );
@@ -399,6 +403,19 @@ function ProcessingSection(props: {
               </option>
             ))}
           </select>
+        </Field>
+        <Field
+          label="Read at once"
+          hint="Documents OCR'd at the same time (1–8). Each needs about 500 MB of the container's memory limit and a CPU core."
+        >
+          <input
+            class="input input-number"
+            type="number"
+            min={1}
+            max={8}
+            value={atOnce}
+            onInput={(e) => setAtOnce(e.currentTarget.value)}
+          />
         </Field>
         <Field label="Shortcut link" hint="The iCloud link to share the Save to Vault Shortcut">
           <input
