@@ -23,7 +23,11 @@ originals in `/data/files/<id>/`, derived files in `/data/cache/<id>/`.
 - `internal/process`: the background worker (one document at a time):
   photo → PDF (`pdf.go`, EXIF orientation applied by the page transform),
   page count, thumbnail, text layer or Tesseract OCR, then the optional
-  classifier (`classify.go`).
+  classifier (`classify.go`: the input and Sanitize; `llm.go`: chat
+  models through an OpenAI-compatible API).
+- `internal/mask`: hides identifiers in text before it goes to a
+  classifier. Anything new that sends document text off the server must
+  go through it.
 - `frontend/src`: `App.tsx` (session, shell, nav), `router.ts` (path
   routes), `api.ts` (one function per endpoint), `components/ui.tsx`
   (Dialog, Field, Figure, SectionHead, useAction), `styles.css`.
@@ -35,8 +39,10 @@ originals in `/data/files/<id>/`, derived files in `/data/cache/<id>/`.
   time; OCR at 300 dpi peaks around 460 MB, hence `mem_limit: 768m`.
 - **Originals are never rewritten.** Thumbnails, photo PDFs and text are
   derived and can be rebuilt ("Run OCR again").
-- **Documents stay on the server.** No cloud services; the classifier
-  hook is off unless `DOCVAULT_CLASSIFIER_URL` is set, and only suggests.
+- **Documents stay on the server.** The only thing that leaves is masked
+  text for suggestions, when `DOCVAULT_LLM_KEY` (or
+  `DOCVAULT_CLASSIFIER_URL`) is set; suggestions are only ever applied by
+  a person. Tests use a fake model server, never a real key.
 - Direct dependencies: modernc.org/sqlite (pure Go, so the build stays
   static and cgo-free). Justify any new one, Go or npm.
 - Every `/api/` call needs a signed-in user: a session cookie, or a
