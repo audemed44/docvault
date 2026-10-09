@@ -1,8 +1,9 @@
 import { FileText, Loader, TriangleAlert, Users } from "lucide-preact";
+import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
 import { docURL } from "../api";
 import { expiryText, formatDate, snippetParts } from "../lib";
-import type { Category, Doc } from "../types";
+import type { Category, Doc, IngestResult } from "../types";
 
 /** Page one of a document, or a stand-in while it's processed. */
 export function DocThumb(props: { doc: Doc; class?: string }) {
@@ -99,5 +100,74 @@ export function CategorySelect(props: {
         </option>
       ))}
     </select>
+  );
+}
+
+/** What the file pickers take. */
+export const ACCEPT = "application/pdf,image/jpeg,image/png,image/heic,image/heif,.pdf,.heic,.heif";
+
+/** Only me or the family, as two big buttons. */
+export function SpaceToggle(props: {
+  family: boolean;
+  onChange: (family: boolean) => void;
+  label?: ComponentChildren;
+}) {
+  const options: [boolean, string, string][] = [
+    [false, "Only me", "Private"],
+    [true, "The family", "Everyone here"],
+  ];
+  return (
+    <div class="field">
+      <span class="field-label">{props.label ?? "Who can see it?"}</span>
+      <div class="space-toggle" role="radiogroup" aria-label="Who can see it">
+        {options.map(([family, label, sub]) => (
+          <button
+            key={label}
+            type="button"
+            role="radio"
+            aria-checked={props.family === family}
+            class={props.family === family ? "active" : ""}
+            onClick={() => props.onChange(family)}
+          >
+            {label}
+            <small>{sub}</small>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const STATUS_TEXT = {
+  added: "Saved",
+  duplicate: "Already there",
+  skipped: "Skipped",
+  failed: "Failed",
+};
+
+export function ResultList(props: { results: IngestResult[] }) {
+  return (
+    <div class="list">
+      {props.results.map((r, i) => (
+        <div key={i} class="list-row">
+          <span
+            class={`dot ${r.status === "added" ? "good" : r.status === "duplicate" ? "" : "bad"}`}
+          />
+          <span class="list-main list-link">
+            {r.document && r.status !== "failed" ? (
+              <a class="list-title link" href={`/documents/${r.document.id}`}>
+                {r.name}
+              </a>
+            ) : (
+              <span class="list-title">{r.name}</span>
+            )}
+            <span class="list-sub">
+              {STATUS_TEXT[r.status]}
+              {r.message && r.status !== "added" ? `: ${r.message}` : ""}
+            </span>
+          </span>
+        </div>
+      ))}
+    </div>
   );
 }

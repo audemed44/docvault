@@ -4,10 +4,10 @@ import { api } from "../api";
 import { useData } from "../hooks";
 import { bytes, plural } from "../lib";
 import type { Doc, Facets, Filter, User } from "../types";
+import { addFiles } from "./AddPage";
 import { DocThumb, docMeta, ExpiryChip, FamilyMark, Snippet, StatusChip } from "./docs";
 import { Empty, ErrorNote, Figure, useAction } from "./ui";
 import { Picker } from "./Picker";
-import { UploadDialog } from "./UploadDialog";
 
 const EMPTY: Filter = {
   q: "",
@@ -32,7 +32,6 @@ export function LibraryPage(props: { user: User }) {
   const [filter, setFilterState] = useState<Filter>(lastFilter);
   const [query, setQuery] = useState(filter.q);
   const [more, setMore] = useState<Doc[]>([]);
-  const [uploading, setUploading] = useState<File[] | null>(null);
   const [dragging, setDragging] = useState(false);
   const [selected, setSelected] = useState<Set<number> | null>(null); // null: not selecting
   const facets = useData(api.facets, 15_000);
@@ -100,7 +99,7 @@ export function LibraryPage(props: { user: User }) {
         e.preventDefault();
         setDragging(false);
         const files = Array.from(e.dataTransfer?.files ?? []);
-        if (files.length) setUploading(files);
+        if (files.length) addFiles(files);
       }}
     >
       <header class="page-head">
@@ -154,20 +153,9 @@ export function LibraryPage(props: { user: User }) {
             onInput={(e) => setQuery(e.currentTarget.value)}
           />
         </label>
-        <label class="btn btn-primary">
-          <Plus size={15} /> Upload
-          <input
-            type="file"
-            multiple
-            hidden
-            accept="application/pdf,image/*,.heic"
-            onChange={(e) => {
-              const files = Array.from(e.currentTarget.files ?? []);
-              e.currentTarget.value = "";
-              if (files.length) setUploading(files);
-            }}
-          />
-        </label>
+        <a class="btn btn-primary" href="/add">
+          <Plus size={15} /> Add
+        </a>
       </div>
 
       <Filters facets={f} filter={filter} onChange={setFilter} />
@@ -244,18 +232,6 @@ export function LibraryPage(props: { user: User }) {
           </button>
         )}
       </section>
-
-      {uploading && (
-        <UploadDialog
-          files={uploading}
-          categories={f?.categories ?? []}
-          onClose={() => setUploading(null)}
-          onDone={() => {
-            setUploading(null);
-            reloadAll();
-          }}
-        />
-      )}
     </div>
   );
 }

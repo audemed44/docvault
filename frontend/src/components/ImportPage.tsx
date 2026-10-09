@@ -4,8 +4,8 @@ import { api, upload } from "../api";
 import { useData } from "../hooks";
 import { ago, plural } from "../lib";
 import type { IngestResult, IngestStatus, User } from "../types";
+import { ResultList, SpaceToggle } from "./docs";
 import { Empty, ErrorNote, Figure, SectionHead, useAction } from "./ui";
-import { ResultList, SpaceToggle } from "./UploadDialog";
 
 const SUPPORTED = /\.(pdf|jpe?g|png|heic|heif)$/i;
 
