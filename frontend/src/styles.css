@@ -661,6 +661,8 @@ pre {
   color: var(--bad);
 }
 .chip-button {
+  height: 36px;
+  padding: 0 12px;
   cursor: pointer;
   font-family: var(--font-mono);
   letter-spacing: 0.02em;
@@ -1836,13 +1838,13 @@ input[type="date"].input {
   min-height: 52px;
   color: var(--fg-2);
 }
-.text-size-normal {
+.text-sizes .text-size-normal {
   font-size: 0.9375rem;
 }
-.text-size-large {
+.text-sizes .text-size-large {
   font-size: 1.0625rem;
 }
-.text-size-larger {
+.text-sizes .text-size-larger {
   font-size: 1.25rem;
 }
 

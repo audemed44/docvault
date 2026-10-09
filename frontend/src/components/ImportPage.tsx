@@ -50,8 +50,8 @@ export function ImportPage(props: { user: User }) {
         <div class="eyebrow eyebrow-accent">Bulk import</div>
         <h1 class="page-title">Import</h1>
         <p class="muted page-lede">
-          Bring in a whole library, like a CamScanner export. Everything lands in the Inbox to sort
-          later: file names become titles, and dates come from the name (
+          Bring in a whole library, like a CamScanner export. Everything lands in Not sorted yet, to
+          be sorted later: file names become titles, and dates come from the name (
           <code>CamScanner 03-15-2021 10.22</code>) or the file. Files already in Docvault are
           skipped, so running an import again is safe.
         </p>

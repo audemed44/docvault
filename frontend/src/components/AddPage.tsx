@@ -149,7 +149,7 @@ function Saved(props: { results: IngestResult[]; added: IngestResult[]; onAnothe
           }),
         );
       }
-      navigate(saved.length === 1 ? `/documents/${saved[0].id}` : "/");
+      navigate(saved.length === 1 ? `/documents/${saved[0].id}` : "/", true);
     });
 
   return (
