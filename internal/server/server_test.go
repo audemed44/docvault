@@ -440,7 +440,7 @@ func TestSuggestions(t *testing.T) {
 	for range 2 {
 		job, _ := x.s.Store.ClaimJob(ctx)
 		x.s.Store.FinishJob(ctx, job.ID, store.JobResult{Pages: 1, TextSource: "pdf", Text: "text", Classified: true,
-			ClassifierInput: "Title: a\n\ntext", Suggestion: &store.Suggest{Title: "Renamed", Category: "Banking & Investments", Tags: []string{"fd"}, NewTags: []string{"locker"}}})
+			ClassifierInput: "Title: a\n\ntext", Suggestion: &store.Suggest{Category: "Banking & Investments", Tags: []string{"fd"}, NewTags: []string{"locker"}}})
 	}
 	var facets store.Facets
 	x.json(x.do("GET", "/api/facets", "", me), 200, &facets)
@@ -462,8 +462,9 @@ func TestSuggestions(t *testing.T) {
 	if len(list.Documents) != 0 {
 		t.Fatal("still in the inbox")
 	}
-	x.json(x.do("GET", "/api/documents?q=renamed", "", me), 200, &list)
-	if len(list.Documents) != 2 || list.Documents[0].Category != "Banking & Investments" || strings.Join(list.Documents[0].Tags, ",") != "fd,locker" ||
+	x.json(x.do("GET", "/api/documents?tag=fd", "", me), 200, &list)
+	if len(list.Documents) != 2 || (list.Documents[0].Title != "a" && list.Documents[0].Title != "b") || // never renamed
+		list.Documents[0].Category != "Banking & Investments" || strings.Join(list.Documents[0].Tags, ",") != "fd,locker" ||
 		list.Documents[0].Suggestion != nil {
 		t.Fatalf("after apply %+v", list.Documents)
 	}
@@ -487,7 +488,7 @@ func TestSuggestions(t *testing.T) {
 	// Asking again queues them: all matching, or just the selected ones.
 	x.s.Processor.Classifier = stubClassifier{}
 	var queued map[string]int
-	x.json(x.do("POST", "/api/suggestions/request?q=renamed", "", me), 200, &queued)
+	x.json(x.do("POST", "/api/suggestions/request?tag=fd", "", me), 200, &queued)
 	if queued["queued"] != 2 {
 		t.Fatalf("queued %v", queued)
 	}

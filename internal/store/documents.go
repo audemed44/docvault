@@ -50,9 +50,9 @@ type Document struct {
 }
 
 // Suggest is what the optional classifier proposes for a document. It's
-// only applied when someone accepts it.
+// only applied when someone accepts it. It never renames a document: the
+// title stays the one its owner gave it.
 type Suggest struct {
-	Title    string   `json:"title,omitempty"`
 	Category string   `json:"category,omitempty"`
 	Tags     []string `json:"tags,omitempty"`
 	// NewTags are tags the classifier proposes that aren't on the tag
@@ -63,7 +63,7 @@ type Suggest struct {
 }
 
 func (s *Suggest) Empty() bool {
-	return s == nil || (s.Title == "" && s.Category == "" && len(s.Tags) == 0 && len(s.NewTags) == 0 &&
+	return s == nil || (s.Category == "" && len(s.Tags) == 0 && len(s.NewTags) == 0 &&
 		s.DocDate == "" && s.Expires == "")
 }
 

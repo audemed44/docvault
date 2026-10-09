@@ -20,7 +20,6 @@ export interface Session {
 export type Status = "pending" | "processing" | "ready" | "failed";
 
 export interface Suggestion {
-  title?: string;
   category?: string;
   tags?: string[];
   /** Proposed tags that aren't on the tag list. */

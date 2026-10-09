@@ -23,13 +23,13 @@ func TestSanitize(t *testing.T) {
 		Tags:       []string{"pan", "lab-report", "[person:1]"},
 	}
 	people := []mask.Person{{Name: "Pranav"}}
-	sg := Sanitize(store.Suggest{Title: "PAN card - [person:1]", Category: "id",
+	sg := Sanitize(store.Suggest{Category: "id",
 		Tags: []string{"PAN", "made-up", "[person:1]", "pan", "[person:2]"}, DocDate: "15/03/2024", Expires: "2030-01-01"}, in, people)
-	if sg.Title != "PAN card - Pranav" || sg.Category != "ID" || strings.Join(sg.Tags, ",") != "pan,Pranav" ||
+	if sg.Category != "ID" || strings.Join(sg.Tags, ",") != "pan,Pranav" ||
 		sg.DocDate != "" || sg.Expires != "2030-01-01" {
 		t.Fatalf("%+v", sg)
 	}
-	if sg := Sanitize(store.Suggest{Title: "Policy [number]", Category: "Recipes"}, in, people); sg != nil {
+	if sg := Sanitize(store.Suggest{Category: "Recipes", Tags: []string{"[person:3]"}}, in, people); sg != nil {
 		t.Fatalf("kept %+v", sg)
 	}
 }
@@ -38,22 +38,14 @@ func TestSanitizeGuessedPeople(t *testing.T) {
 	in := Input{Title: "Ex Service Man Card", Text: "issued to [person:2]", Categories: []CategoryTags{{Name: "ID"}},
 		Tags: []string{"[person:1]", "[person:2]"}}
 	people := []mask.Person{{Name: "Aakash"}, {Name: "Pranav"}}
-	for title, want := range map[string]string{
-		"Ex-Serviceman card - [person:1]":              "Ex-Serviceman card",
-		"[person:1]'s ex-serviceman card":              "ex-serviceman card",
-		"Ex-Serviceman card for [person:1]":            "Ex-Serviceman card",
-		"Ex-Serviceman card - [person:2]":              "Ex-Serviceman card - Pranav",
-		"Ex-Serviceman card - [person:1] - [person:2]": "Ex-Serviceman card - Pranav",
-	} {
-		sg := Sanitize(store.Suggest{Title: title, Tags: []string{"[person:1]", "[person:2]"}}, in, people)
-		if sg.Title != want || strings.Join(sg.Tags, ",") != "Pranav" {
-			t.Errorf("%q: %+v", title, sg)
-		}
+	sg := Sanitize(store.Suggest{Category: "ID", Tags: []string{"[person:1]", "[person:2]"}}, in, people)
+	if strings.Join(sg.Tags, ",") != "Pranav" {
+		t.Fatalf("%+v", sg)
 	}
-	// Only a guess: nothing left of the person.
+	// Only a guess: no one.
 	in.Text = "no one named"
-	sg := Sanitize(store.Suggest{Title: "Ex-Serviceman card - [person:2]", Tags: []string{"[person:2]"}}, in, people)
-	if sg.Title != "Ex-Serviceman card" || len(sg.Tags) != 0 {
+	sg = Sanitize(store.Suggest{Category: "ID", Tags: []string{"[person:2]"}}, in, people)
+	if len(sg.Tags) != 0 {
 		t.Fatalf("%+v", sg)
 	}
 }
@@ -131,7 +123,7 @@ func TestLLMClassify(t *testing.T) {
 		strings.Contains(string(schemaJSON), `"aadhaar"`) {
 		t.Fatalf("schema %s", schemaJSON)
 	}
-	if res.Suggestion.Title != "PAN card - Pranav" || strings.Join(res.Suggestion.Tags, ",") != "pan,Pranav" {
+	if strings.Join(res.Suggestion.Tags, ",") != "pan,Pranav" {
 		t.Fatalf("suggestion %+v", res.Suggestion)
 	}
 	if !strings.Contains(res.ClassifierInput, "[pan]") || strings.Contains(res.ClassifierInput, "ABCPS1234K") {
