@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -467,6 +468,26 @@ func TestSuggestions(t *testing.T) {
 		list.Documents[0].Suggestion != nil {
 		t.Fatalf("after apply %+v", list.Documents)
 	}
+	// A family member's tag is its own facet and filter.
+	x.json(x.do("PUT", "/api/settings", `{"ocr_langs":"eng","people":[{"name":"Pranav"}]}`, me), 200, nil)
+	var doc map[string]any
+	x.json(x.do("GET", "/api/documents/1", "", me), 200, &doc)
+	doc["tags"] = []string{"fd", "pranav"}
+	body, _ := json.Marshal(doc)
+	x.json(x.do("PUT", "/api/documents/1", string(body), me), 200, nil)
+	x.json(x.do("GET", "/api/facets", "", me), 200, &facets)
+	if len(facets.People) != 1 || facets.People[0].Name != "pranav" || slices.ContainsFunc(facets.Tags, func(c store.Count) bool { return c.Name == "pranav" }) {
+		t.Fatalf("people %+v, tags %+v", facets.People, facets.Tags)
+	}
+	x.json(x.do("GET", "/api/documents?person=pranav&tag=fd", "", me), 200, &list)
+	if len(list.Documents) != 1 {
+		t.Fatalf("person filter %+v", list.Documents)
+	}
+	x.json(x.do("GET", "/api/documents?person=pranav&tag=locker", "", me), 200, &list)
+	if len(list.Documents) != 0 {
+		t.Fatalf("person and tag %+v", list.Documents)
+	}
+
 	// Applying put "fd" and "locker" on the list (the vocabulary was
 	// replaced above), under the documents' category.
 	var unlisted []store.Count

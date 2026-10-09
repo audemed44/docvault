@@ -210,7 +210,7 @@ func (s *Server) uploadOptions(r *http.Request, u *store.User, f map[string]stri
 // filterOf reads a library filter from the query string.
 func filterOf(r *http.Request) store.Filter {
 	q := r.URL.Query()
-	f := store.Filter{Query: q.Get("q"), Space: q.Get("space"), Tag: q.Get("tag"), Year: q.Get("year"),
+	f := store.Filter{Query: q.Get("q"), Space: q.Get("space"), Tag: q.Get("tag"), Person: q.Get("person"), Year: q.Get("year"),
 		Expiring: q.Get("expiring") == "1", Status: q.Get("status"),
 		Suggested: q.Get("suggested") == "1", Unclassified: q.Get("unclassified") == "1",
 		Warnings: q.Get("warnings") == "1"}
@@ -241,6 +241,16 @@ func (s *Server) facets(w http.ResponseWriter, r *http.Request) {
 		storeError(w, err)
 		return
 	}
+	set, err := s.Store.Settings(r.Context())
+	if err != nil {
+		storeError(w, err)
+		return
+	}
+	names := []string{}
+	for _, p := range set.People {
+		names = append(names, p.Name)
+	}
+	f.SplitPeople(names)
 	writeJSON(w, http.StatusOK, f)
 }
 

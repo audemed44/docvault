@@ -95,6 +95,8 @@ export interface Facets {
   unclassified: number;
   categories: Category[];
   tags: Count[];
+  /** Tags that are family members, apart from tags. */
+  people: Count[];
   years: Count[];
 }
 
@@ -104,6 +106,8 @@ export interface Filter {
   /** "" any, "none" the inbox, or a category ID. */
   category: string;
   tag: string;
+  /** A family member's tag. */
+  person: string;
   year: string;
   expiring: boolean;
   status: string;

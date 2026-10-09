@@ -360,6 +360,7 @@ type Filter struct {
 	Space    string // "" (everything visible), "mine" or "family"
 	Category int64  // 0: any, -1: uncategorised
 	Tag      string
+	Person   string // a family member's tag, filtered apart from Tag
 	Year     string
 	Expiring bool // only documents with an expiry date, soonest first
 	Status   string
@@ -414,9 +415,11 @@ func searchWhere(userID int64, f Filter) (where []string, args []any, join, orde
 		where = append(where, "d.category_id = ?")
 		args = append(args, f.Category)
 	}
-	if f.Tag != "" {
-		where = append(where, "EXISTS (SELECT 1 FROM document_tags t WHERE t.document_id = d.id AND t.tag = ?)")
-		args = append(args, f.Tag)
+	for _, tag := range []string{f.Tag, f.Person} {
+		if tag != "" {
+			where = append(where, "EXISTS (SELECT 1 FROM document_tags t WHERE t.document_id = d.id AND t.tag = ?)")
+			args = append(args, tag)
+		}
 	}
 	if f.Year != "" {
 		where = append(where, "substr(d.doc_date, 1, 4) = ?")
@@ -509,7 +512,10 @@ type Facets struct {
 	Unclassified int        `json:"unclassified"`
 	Categories   []Category `json:"categories"`
 	Tags         []Count    `json:"tags"`
-	Years        []Count    `json:"years"`
+	// People are the tags that are family members (SplitPeople), apart
+	// from Tags.
+	People []Count `json:"people"`
+	Years  []Count `json:"years"`
 }
 
 type Count struct {
@@ -550,6 +556,20 @@ func (s *Store) Facets(ctx context.Context, userID int64) (*Facets, error) {
 		return nil, err
 	}
 	return f, nil
+}
+
+// SplitPeople moves the family members' tags (names, any case) from
+// f.Tags to f.People.
+func (f *Facets) SplitPeople(names []string) {
+	tags, people := []Count{}, []Count{}
+	for _, t := range f.Tags {
+		if slices.ContainsFunc(names, func(n string) bool { return strings.EqualFold(n, t.Name) }) {
+			people = append(people, t)
+		} else {
+			tags = append(tags, t)
+		}
+	}
+	f.Tags, f.People = tags, people
 }
 
 func (s *Store) counts(ctx context.Context, query string, args ...any) ([]Count, error) {

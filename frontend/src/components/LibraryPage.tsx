@@ -295,6 +295,17 @@ function Filters(props: { facets: Facets | null; filter: Filter; onChange: (f: F
         ]}
         onChange={(category) => set({ category })}
       />
+      {!!f?.people?.length && (
+        <Picker
+          label="People"
+          value={filter.person}
+          options={[
+            { value: "", label: "Everyone" },
+            ...f.people.map((t) => ({ value: t.name, label: t.name, count: t.count })),
+          ]}
+          onChange={(person) => set({ person })}
+        />
+      )}
       {!!f?.tags.length && (
         <Picker
           label="Tags"
