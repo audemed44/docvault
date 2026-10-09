@@ -33,7 +33,9 @@ originals in `/data/files/<id>/`, derived files in `/data/cache/<id>/`.
   go through it.
 - `frontend/src`: `App.tsx` (session, shell, nav), `router.ts` (path
   routes), `api.ts` (one function per endpoint), `components/ui.tsx`
-  (Dialog, Field, Figure, SectionHead, useAction), `styles.css`.
+  (Dialog, Field, Figure, SectionHead, useAction), `components/Picker.tsx`
+  (the Library's filter dropdowns: a search box past MENU_ROWS options),
+  `styles.css`.
 
 ## Constraints
 
