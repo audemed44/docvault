@@ -3,7 +3,7 @@ import { useState } from "preact/hooks";
 import { api } from "../api";
 import { useData } from "../hooks";
 import { langName, plural } from "../lib";
-import type { Category, Settings, User } from "../types";
+import type { Category, Settings, TextSize, User } from "../types";
 import { MaskingSection, TagsSection } from "./SuggestSettings";
 import { CopyField, Dialog, Empty, ErrorNote, Field, SectionHead, useAction } from "./ui";
 
@@ -94,10 +94,37 @@ function IPhoneSection(props: { index: number; user: User; settings: Settings | 
   );
 }
 
+const TEXT_SIZES: [TextSize, string][] = [
+  ["", "Normal"],
+  ["large", "Large"],
+  ["larger", "Extra large"],
+];
+
+/** Normal, Large or Extra large: each a button set in its own size. */
+export function TextSizeChoice(props: { value: TextSize; onChange: (v: TextSize) => void }) {
+  return (
+    <div class="seg text-sizes" role="radiogroup" aria-label="Text size">
+      {TEXT_SIZES.map(([v, label]) => (
+        <button
+          key={v}
+          type="button"
+          role="radio"
+          aria-checked={props.value === v}
+          class={`text-size-${v || "normal"} ${props.value === v ? "active" : ""}`}
+          onClick={() => props.onChange(v)}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function AccountSection(props: { index: number; user: User; onUser: (u: User) => void }) {
   const [name, setName] = useState(props.user.name);
   const [saved, setSaved] = useState("");
   const { busy, error, run } = useAction();
+  const size = useAction();
 
   const save = (e: Event) => {
     e.preventDefault();
@@ -113,6 +140,22 @@ function AccountSection(props: { index: number; user: User; onUser: (u: User) =>
       <SectionHead index={props.index} title="Account">
         <span class="muted mono">{props.user.username}</span>
       </SectionHead>
+      <div class="field">
+        <span class="field-label">Text size</span>
+        <TextSizeChoice
+          value={props.user.text_size ?? ""}
+          onChange={(text_size) =>
+            size.run(async () => props.onUser(await api.updateMe({ text_size })))
+          }
+        />
+        <span class="field-hint">
+          {size.error ? (
+            <span class="form-error">{size.error}</span>
+          ) : (
+            "Changes straight away, on every phone and computer you use."
+          )}
+        </span>
+      </div>
       <form class="form form-narrow" onSubmit={save}>
         <Field label="Name">
           <input class="input" value={name} onInput={(e) => setName(e.currentTarget.value)} />
@@ -240,6 +283,13 @@ function UserDialog(props: {
             onInput={(e) => setU({ ...u, name: e.currentTarget.value })}
           />
         </Field>
+        <div class="field">
+          <span class="field-label">Text size</span>
+          <TextSizeChoice
+            value={u.text_size ?? ""}
+            onChange={(text_size) => setU({ ...u, text_size })}
+          />
+        </div>
         <label class="check">
           <input
             type="checkbox"

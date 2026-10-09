@@ -3,10 +3,14 @@ export interface User {
   username: string;
   name: string;
   admin: boolean;
+  /** Scales the whole interface. */
+  text_size: TextSize;
   created: string;
   /** Private documents (in the People list only). */
   documents: number;
 }
+
+export type TextSize = "" | "large" | "larger";
 
 export interface Session {
   authenticated: boolean;

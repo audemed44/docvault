@@ -16,21 +16,23 @@ var ErrConflict = errors.New("already exists")
 var ErrInUse = errors.New("still in use")
 
 type User struct {
-	ID       int64     `json:"id"`
-	Username string    `json:"username"`
-	Name     string    `json:"name"`
-	Admin    bool      `json:"admin"`
+	ID       int64  `json:"id"`
+	Username string `json:"username"`
+	Name     string `json:"name"`
+	Admin    bool   `json:"admin"`
+	// TextSize scales the whole interface: "" (normal), "large" or "larger".
+	TextSize string    `json:"text_size"`
 	Created  time.Time `json:"created"`
 	// Documents counts the user's private documents (in Users only).
 	Documents int `json:"documents"`
 }
 
-const userCols = `id, username, name, admin, created`
+const userCols = `id, username, name, admin, text_size, created`
 
 func scanUser(row interface{ Scan(...any) error }) (*User, error) {
 	var u User
 	var created int64
-	if err := row.Scan(&u.ID, &u.Username, &u.Name, &u.Admin, &created); err != nil {
+	if err := row.Scan(&u.ID, &u.Username, &u.Name, &u.Admin, &u.TextSize, &created); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
@@ -62,7 +64,7 @@ func (s *Store) Users(ctx context.Context) ([]User, error) {
 	for rows.Next() {
 		var u User
 		var created int64
-		if err := rows.Scan(&u.ID, &u.Username, &u.Name, &u.Admin, &created, &u.Documents); err != nil {
+		if err := rows.Scan(&u.ID, &u.Username, &u.Name, &u.Admin, &u.TextSize, &created, &u.Documents); err != nil {
 			return nil, err
 		}
 		u.Created = fromMS(created)
@@ -82,8 +84,8 @@ func (s *Store) UserByName(ctx context.Context, username string) (*User, error) 
 func (s *Store) CreateUser(ctx context.Context, u *User) error {
 	u.Created = time.Now()
 	res, err := s.db.ExecContext(ctx,
-		`INSERT INTO users (username, name, admin, created) VALUES (?, ?, ?, ?)`,
-		u.Username, u.Name, u.Admin, ms(u.Created))
+		`INSERT INTO users (username, name, admin, text_size, created) VALUES (?, ?, ?, ?, ?)`,
+		u.Username, u.Name, u.Admin, u.TextSize, ms(u.Created))
 	if isUnique(err) {
 		return ErrConflict
 	}
@@ -94,9 +96,10 @@ func (s *Store) CreateUser(ctx context.Context, u *User) error {
 	return err
 }
 
-// UpdateUser changes the name and admin flag.
+// UpdateUser changes the name, admin flag and text size.
 func (s *Store) UpdateUser(ctx context.Context, u *User) error {
-	res, err := s.db.ExecContext(ctx, `UPDATE users SET name = ?, admin = ? WHERE id = ?`, u.Name, u.Admin, u.ID)
+	res, err := s.db.ExecContext(ctx, `UPDATE users SET name = ?, admin = ?, text_size = ? WHERE id = ?`,
+		u.Name, u.Admin, u.TextSize, u.ID)
 	if err != nil {
 		return err
 	}
@@ -138,7 +141,7 @@ func (s *Store) CreateSession(ctx context.Context, hash string, userID int64) er
 // (at most hourly). Sessions unused for maxIdle have expired.
 func (s *Store) SessionUser(ctx context.Context, hash string, maxIdle time.Duration) (*User, error) {
 	var seen int64
-	u, err := scanUser(s.db.QueryRowContext(ctx, `SELECT u.id, u.username, u.name, u.admin, u.created
+	u, err := scanUser(s.db.QueryRowContext(ctx, `SELECT u.id, u.username, u.name, u.admin, u.text_size, u.created
 		FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.hash = ?`, hash))
 	if err != nil {
 		return nil, err
