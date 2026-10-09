@@ -123,6 +123,26 @@ function DocActions(props: { doc: Doc }) {
     }
   };
 
+  // iOS (above all as a Home Screen app) shows a PDF instead of saving it,
+  // whatever the server says; a file handed over from the page is saved.
+  const download = async (e: MouseEvent) => {
+    e.preventDefault();
+    setError("");
+    try {
+      const b = await (blob.current ?? fetch(docURL.file(d.id)).then((r) => r.blob()));
+      const url = URL.createObjectURL(b);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = b.type === "application/pdf" ? name : d.file_name;
+      document.body.append(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch {
+      window.location.href = docURL.file(d.id, true);
+    }
+  };
+
   return (
     <div class="doc-actions">
       <a class="btn btn-primary" href={docURL.file(d.id)} target="_blank" rel="noopener">
@@ -133,7 +153,7 @@ function DocActions(props: { doc: Doc }) {
           <Share2 size={14} /> Share
         </button>
       )}
-      <a class="btn" href={docURL.file(d.id, true)} download>
+      <a class="btn" href={docURL.file(d.id, true)} download={name} onClick={download}>
         <Download size={14} /> Download
       </a>
       {error && <div class="form-error">{error}</div>}
