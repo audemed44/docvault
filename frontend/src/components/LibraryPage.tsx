@@ -219,7 +219,7 @@ function Attention(props: { facets: Facets }) {
   const f = props.facets;
   const items: [number, string, Partial<Filter>][] = [
     [f.failed, "couldn't be read", { status: "failed" }],
-    [f.warnings, "partly read", { warnings: true }],
+    [f.warnings, "with unclear pages", { warnings: true }],
     [
       f.suggested,
       f.suggested === 1 ? "suggestion waiting" : "suggestions waiting",
@@ -480,8 +480,8 @@ function Filters(props: { facets: Facets | null; filter: Filter; onChange: (f: F
         {(
           [
             ["", "All", f?.total],
-            ["mine", "Mine", f?.mine],
-            ["family", "Family", f?.family],
+            ["mine", "Only mine", f?.mine],
+            ["family", "The family", f?.family],
           ] as const
         ).map(([v, label, n]) => (
           <button
@@ -499,7 +499,7 @@ function Filters(props: { facets: Facets | null; filter: Filter; onChange: (f: F
         value={filter.category}
         options={[
           { value: "", label: "All categories" },
-          { value: "none", label: "Inbox", count: f?.inbox },
+          { value: "none", label: "Not sorted yet", count: f?.inbox },
           ...(f?.categories ?? [])
             .filter((c) => c.count > 0 || String(c.id) === filter.category)
             .map((c) => ({ value: String(c.id), label: c.name, count: c.count })),
@@ -556,12 +556,12 @@ function Filters(props: { facets: Facets | null; filter: Filter; onChange: (f: F
       )}
       {filter.warnings && (
         <button class="chip chip-warn chip-button" onClick={() => set({ warnings: false })}>
-          Partly read <X size={11} />
+          Some pages unclear <X size={11} />
         </button>
       )}
       {filter.status && (
         <button class="chip chip-bad chip-button" onClick={() => set({ status: "" })}>
-          {filter.status} <X size={11} />
+          {filter.status === "failed" ? "Couldn't read" : filter.status} <X size={11} />
         </button>
       )}
     </div>

@@ -17,8 +17,8 @@ export function SettingsPage(props: { user: User; onUser: (u: User) => void }) {
         <div class="eyebrow eyebrow-accent">{user.name}</div>
         <h1 class="page-title">Settings</h1>
       </header>
-      <IPhoneSection index={++n} user={user} settings={settings.data} />
       <AccountSection index={++n} user={user} onUser={props.onUser} />
+      <IPhoneSection index={++n} user={user} settings={settings.data} />
       {user.admin && <PeopleSection index={++n} me={user} />}
       {user.admin && <CategoriesSection index={++n} />}
       {user.admin && <TagsSection index={++n} />}
@@ -58,6 +58,8 @@ function IPhoneSection(props: { index: number; user: User; settings: Settings | 
               </a>{" "}
               and add it. It asks for your username once.
             </>
+          ) : !props.user.admin ? (
+            <>Ask whoever looks after Docvault to put the Save to Vault Shortcut on your iPhone.</>
           ) : (
             <>
               Build the Shortcut: <em>Receive PDFs and Images from Share Sheet</em> →{" "}
@@ -68,7 +70,7 @@ function IPhoneSection(props: { index: number; user: User; settings: Settings | 
             </>
           )}
         </li>
-        <li>Tailscale needs to be on. The Shortcut shows “ok: saved …” or what went wrong.</li>
+        <li>Tailscale needs to be on. The Shortcut says “ok: saved …”, or what went wrong.</li>
       </ol>
       <div class="kv kv-wide">
         <div>
@@ -77,18 +79,22 @@ function IPhoneSection(props: { index: number; user: User; settings: Settings | 
             <CopyField value={props.user.username} />
           </dd>
         </div>
-        <div>
-          <dt>Upload to</dt>
-          <dd>
-            <CopyField value={`${origin}/api/upload`} />
-          </dd>
-        </div>
-        <div>
-          <dt>Category list</dt>
-          <dd>
-            <CopyField value={`${origin}/api/categories?format=names`} />
-          </dd>
-        </div>
+        {props.user.admin && (
+          <>
+            <div>
+              <dt>Upload to</dt>
+              <dd>
+                <CopyField value={`${origin}/api/upload`} />
+              </dd>
+            </div>
+            <div>
+              <dt>Category list</dt>
+              <dd>
+                <CopyField value={`${origin}/api/categories?format=names`} />
+              </dd>
+            </div>
+          </>
+        )}
       </div>
     </section>
   );
@@ -322,7 +328,7 @@ function CategoriesSection(props: { index: number }) {
       <SectionHead index={props.index} title="Categories" />
       <p class="muted page-lede">
         One per document. The iPhone Shortcut reads this list for its menu. Deleting a category
-        moves its documents to the Inbox.
+        moves its documents to Not sorted yet.
       </p>
       {cats.error && <ErrorNote>{cats.error}</ErrorNote>}
       {cats.data && (
@@ -383,7 +389,7 @@ function CategoriesSection(props: { index: number }) {
                   if (
                     removed.length &&
                     !confirm(
-                      `${removed.map((c) => c.name).join(", ")} still have documents; they'll go to the Inbox. Save?`,
+                      `${removed.map((c) => c.name).join(", ")} still have documents; they'll go to Not sorted yet. Save?`,
                     )
                   ) {
                     return;

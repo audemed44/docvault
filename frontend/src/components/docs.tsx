@@ -54,14 +54,14 @@ export function StatusChip(props: { doc: Doc }) {
   switch (props.doc.status) {
     case "pending":
     case "processing":
-      return <span class="chip chip-accent">Processing</span>;
+      return <span class="chip chip-accent">Reading…</span>;
     case "failed":
-      return <span class="chip chip-bad">Failed</span>;
+      return <span class="chip chip-bad">Couldn't read</span>;
   }
   if (props.doc.warning) {
     return (
       <span class="chip chip-warn" title={props.doc.warning}>
-        Partly read
+        Some pages unclear
       </span>
     );
   }
@@ -109,7 +109,9 @@ export function CategorySelect(props: {
       onChange={(e) => props.onChange(e.currentTarget.value)}
     >
       {props.any !== undefined && <option value="">{props.any}</option>}
-      <option value={props.any !== undefined ? "none" : "0"}>{props.inbox ?? "Inbox"}</option>
+      <option value={props.any !== undefined ? "none" : "0"}>
+        {props.inbox ?? "Not sorted yet"}
+      </option>
       {props.categories.map((c) => (
         <option key={c.id} value={String(c.id)}>
           {c.name}
@@ -158,7 +160,7 @@ const STATUS_TEXT = {
   added: "Saved",
   duplicate: "Already there",
   skipped: "Skipped",
-  failed: "Failed",
+  failed: "Couldn't save",
 };
 
 export function ResultList(props: { results: IngestResult[] }) {
