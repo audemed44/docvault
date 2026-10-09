@@ -26,6 +26,7 @@ const EMPTY: Filter = {
   status: "",
   suggested: false,
   unclassified: false,
+  warnings: false,
 };
 
 // Kept between visits, so coming back from a document keeps the search.
@@ -135,6 +136,14 @@ export function LibraryPage(props: { user: User }) {
               onClick={() => setFilter({ ...EMPTY, status: "failed" })}
             >
               <Figure value={f.failed} label="Failed" tone="bad" />
+            </button>
+          )}
+          {!!f?.warnings && (
+            <button
+              class="figure-btn figure-link"
+              onClick={() => setFilter({ ...EMPTY, warnings: true })}
+            >
+              <Figure value={f.warnings} label="Partly read" tone="warn" />
             </button>
           )}
         </div>
@@ -330,6 +339,11 @@ function Filters(props: { facets: Facets | null; filter: Filter; onChange: (f: F
       {filter.unclassified && (
         <button class="chip chip-accent chip-button" onClick={() => set({ unclassified: false })}>
           Without suggestions <X size={11} />
+        </button>
+      )}
+      {filter.warnings && (
+        <button class="chip chip-warn chip-button" onClick={() => set({ warnings: false })}>
+          Partly read <X size={11} />
         </button>
       )}
       {filter.status && (

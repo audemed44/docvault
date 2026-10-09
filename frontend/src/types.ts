@@ -49,6 +49,8 @@ export interface Doc {
   pages: number;
   status: Status;
   error?: string;
+  /** Read, but not all of it (pages OCR couldn't read). */
+  warning?: string;
   text_source: "" | "pdf" | "ocr";
   ocr_lang?: string;
   suggestion?: Suggestion;
@@ -85,6 +87,8 @@ export interface Facets {
   expiring: number;
   processing: number;
   failed: number;
+  /** Read, but not all of it. */
+  warnings: number;
   /** With a suggestion waiting. */
   suggested: number;
   /** Processed, but never seen by the classifier. */
@@ -105,6 +109,7 @@ export interface Filter {
   status: string;
   suggested: boolean;
   unclassified: boolean;
+  warnings: boolean;
 }
 
 export interface Person {

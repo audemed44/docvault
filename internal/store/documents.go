@@ -34,6 +34,8 @@ type Document struct {
 	Pages      int      `json:"pages"`
 	Status     string   `json:"status"` // pending, processing, ready or failed
 	Error      string   `json:"error,omitempty"`
+	// Warning: it was read, but not all of it (pages OCR couldn't read).
+	Warning    string   `json:"warning,omitempty"`
 	TextSource string   `json:"text_source"` // "", "pdf" (its own text layer) or "ocr"
 	OCRLang    string   `json:"ocr_lang,omitempty"`
 	Suggestion *Suggest `json:"suggestion,omitempty"`
@@ -67,7 +69,7 @@ func (s *Suggest) Empty() bool {
 
 const docCols = `d.id, d.owner_id, ifnull(a.name, ''), d.title, ifnull(d.category_id, 0), ifnull(c.name, ''),
 	d.doc_date, d.expires, d.notes, d.file_name, d.file_path, d.mime, d.size, d.sha256, d.pages,
-	d.status, d.error, d.text_source, d.ocr_lang, d.suggestion, d.classified, d.classify_error, d.created, d.updated,
+	d.status, d.error, d.warning, d.text_source, d.ocr_lang, d.suggestion, d.classified, d.classify_error, d.created, d.updated,
 	(SELECT ifnull(group_concat(tag, char(31)), '') FROM (SELECT tag FROM document_tags t WHERE t.document_id = d.id ORDER BY tag))`
 
 const docFrom = ` FROM documents d
@@ -85,7 +87,7 @@ func scanDoc(row interface{ Scan(...any) error }, extra ...any) (*Document, erro
 	var classified, created, updated int64
 	dest := []any{&d.ID, &owner, &d.AddedBy, &d.Title, &d.CategoryID, &d.Category,
 		&d.DocDate, &d.Expires, &d.Notes, &d.FileName, &d.FilePath, &d.Mime, &d.Size, &d.SHA256, &d.Pages,
-		&d.Status, &d.Error, &d.TextSource, &d.OCRLang, &suggestion, &classified, &d.ClassifyError, &created, &updated, &tags}
+		&d.Status, &d.Error, &d.Warning, &d.TextSource, &d.OCRLang, &suggestion, &classified, &d.ClassifyError, &created, &updated, &tags}
 	if err := row.Scan(append(dest, extra...)...); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
@@ -364,8 +366,10 @@ type Filter struct {
 	// Suggested: with a classifier suggestion waiting. Unclassified:
 	// processed, but never seen by the classifier.
 	Suggested, Unclassified bool
-	Limit                   int
-	Offset                  int
+	// Warnings: read, but not all of it.
+	Warnings bool
+	Limit    int
+	Offset   int
 }
 
 // ftsQuery turns what someone typed into an FTS5 query: every word must
@@ -432,6 +436,9 @@ func searchWhere(userID int64, f Filter) (where []string, args []any, join, orde
 	if f.Unclassified {
 		where = append(where, "d.classified = 0 AND d.status = 'ready'")
 	}
+	if f.Warnings {
+		where = append(where, "d.warning != ''")
+	}
 	return where, args, join, order, snippet
 }
 
@@ -496,6 +503,7 @@ type Facets struct {
 	Expiring   int `json:"expiring"`
 	Processing int `json:"processing"`
 	Failed     int `json:"failed"`
+	Warnings   int `json:"warnings"`
 	Suggested  int `json:"suggested"`
 	// Unclassified are processed documents the classifier hasn't seen.
 	Unclassified int        `json:"unclassified"`
@@ -522,10 +530,11 @@ func (s *Store) Facets(ctx context.Context, userID int64) (*Facets, error) {
 		count(*) FILTER (WHERE d.expires != '' AND d.expires <= ?),
 		count(*) FILTER (WHERE d.status IN ('pending', 'processing')),
 		count(*) FILTER (WHERE d.status = 'failed'),
+		count(*) FILTER (WHERE d.warning != ''),
 		count(*) FILTER (WHERE d.suggestion != ''),
 		count(*) FILTER (WHERE d.classified = 0 AND d.status = 'ready')
 		FROM documents d WHERE `+visible, userID, soon, userID).
-		Scan(&f.Total, &f.Mine, &f.Family, &f.Inbox, &f.Expiring, &f.Processing, &f.Failed, &f.Suggested, &f.Unclassified)
+		Scan(&f.Total, &f.Mine, &f.Family, &f.Inbox, &f.Expiring, &f.Processing, &f.Failed, &f.Warnings, &f.Suggested, &f.Unclassified)
 	if err != nil {
 		return nil, err
 	}
@@ -680,8 +689,10 @@ type Job struct {
 	TextSource string
 	Text       string
 	Pages      int
-	// Error is why reading failed, for a job claimed for its suggestion.
-	Error string
+	// Error is why reading failed, and Warning what it couldn't read, for
+	// a job claimed for its suggestion (Warning also with OCR text kept).
+	Error   string
+	Warning string
 	// WantSuggestion: someone asked for a suggestion for it.
 	WantSuggestion bool
 	// OwnerID is whose library it's in (0: the Family space).
@@ -695,6 +706,7 @@ type JobResult struct {
 	TextSource string
 	OCRLang    string
 	Error      string
+	Warning    string
 	// Classified: the classifier answered, with Suggestion (maybe nil) for
 	// ClassifierInput. ClassifyError: it was asked, and failed.
 	Classified      bool
@@ -727,8 +739,8 @@ func (s *Store) ClaimSuggestion(ctx context.Context) (*Job, error) {
 func (s *Store) claim(ctx context.Context, update string) (*Job, error) {
 	var j Job
 	err := s.db.QueryRowContext(ctx, update+`
-		RETURNING id, file_path, mime, force_ocr, ocr_lang, title, text_source, pages, error, want_suggestion, ifnull(owner_id, 0)`).
-		Scan(&j.ID, &j.FilePath, &j.Mime, &j.ForceOCR, &j.OCRLang, &j.Title, &j.TextSource, &j.Pages, &j.Error, &j.WantSuggestion, &j.OwnerID)
+		RETURNING id, file_path, mime, force_ocr, ocr_lang, title, text_source, pages, error, warning, want_suggestion, ifnull(owner_id, 0)`).
+		Scan(&j.ID, &j.FilePath, &j.Mime, &j.ForceOCR, &j.OCRLang, &j.Title, &j.TextSource, &j.Pages, &j.Error, &j.Warning, &j.WantSuggestion, &j.OwnerID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -782,13 +794,13 @@ func (s *Store) saveJob(ctx context.Context, id int64, r JobResult, wasRead, sug
 		return err
 	}
 	defer tx.Rollback()
-	res, err := tx.ExecContext(ctx, `UPDATE documents SET status = ?, error = ?, pages = ?, text_source = ?,
+	res, err := tx.ExecContext(ctx, `UPDATE documents SET status = ?, error = ?, warning = ?, pages = ?, text_source = ?,
 		ocr_lang = ?, force_ocr = 0, read_done = ?, want_suggestion = ?, classify_error = ?,
 		suggestion = CASE WHEN ? THEN ? ELSE suggestion END,
 		classified = CASE WHEN ? THEN ? ELSE classified END,
 		classifier_input = CASE WHEN ? != '' THEN ? ELSE classifier_input END
 		WHERE id = ? AND status = 'processing' AND read_done = ?`,
-		status, r.Error, r.Pages, r.TextSource, r.OCRLang, suggestNext, suggestNext, r.ClassifyError,
+		status, r.Error, r.Warning, r.Pages, r.TextSource, r.OCRLang, suggestNext, suggestNext, r.ClassifyError,
 		r.Classified, suggestion, r.Classified, classified, r.ClassifierInput, r.ClassifierInput, id, wasRead)
 	if err != nil {
 		return err

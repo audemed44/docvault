@@ -186,7 +186,8 @@ func (p *Processor) suggestJob(ctx context.Context, job *store.Job) {
 		return
 	}
 	start := time.Now()
-	res := store.JobResult{Pages: job.Pages, Text: job.Text, TextSource: job.TextSource, OCRLang: job.OCRLang, Error: job.Error}
+	res := store.JobResult{Pages: job.Pages, Text: job.Text, TextSource: job.TextSource, OCRLang: job.OCRLang,
+		Error: job.Error, Warning: job.Warning}
 	if p.Classifier != nil {
 		p.classify(ctx, job, &res)
 	}
@@ -268,7 +269,7 @@ func (p *Processor) read(ctx context.Context, job *store.Job) store.JobResult {
 
 	if !job.ForceOCR && job.TextSource == "ocr" && job.Text != "" {
 		// OCR'd before: keep that text (Run OCR again forces a new one).
-		res.Text, res.TextSource, res.OCRLang = job.Text, "ocr", job.OCRLang
+		res.Text, res.TextSource, res.OCRLang, res.Warning = job.Text, "ocr", job.OCRLang, job.Warning
 	} else if !job.ForceOCR {
 		out, err := run(ctx, "pdftotext", "-enc", "UTF-8", "-layout", pdf, "-")
 		if err != nil {
@@ -283,11 +284,12 @@ func (p *Processor) read(ctx context.Context, job *store.Job) store.JobResult {
 			set, _ := p.Store.Settings(ctx)
 			lang = set.OCRLangs
 		}
-		text, err := ocr(ctx, pdf, pages, lang, tmp)
+		text, skipped, err := ocr(ctx, pdf, pages, lang, tmp)
 		if err != nil {
 			res.Error = join(res.Error, "OCR: "+err.Error())
 		} else {
 			res.Text, res.TextSource, res.OCRLang = clip(text), "ocr", lang
+			res.Warning = skippedWarning(skipped)
 		}
 	}
 	return res
@@ -431,29 +433,63 @@ func pageDPI(ctx context.Context, pdf string, page int) int {
 }
 
 // ocr renders each page (see pageDPI) and runs Tesseract on it, one page at
-// a time, so only one page image is ever on disk or in memory.
-func ocr(ctx context.Context, pdf string, pages int, lang, tmp string) (string, error) {
+// a time, so only one page image is ever on disk or in memory. A page
+// Tesseract can't read (it crashes on some layouts) is tried once more as a
+// single block of text, then skipped: skipped lists those pages. It fails
+// only when no page could be read.
+func ocr(ctx context.Context, pdf string, pages int, lang, tmp string) (string, []int, error) {
 	var text strings.Builder
-	for page := 1; page <= min(pages, maxOCRPages); page++ {
+	var skipped []int
+	var lastErr error
+	n := min(pages, maxOCRPages)
+	for page := 1; page <= n; page++ {
 		if ctx.Err() != nil {
-			return "", ctx.Err()
+			return "", nil, ctx.Err()
 		}
 		img := filepath.Join(tmp, "page")
-		n := strconv.Itoa(page)
-		if _, err := run(ctx, "pdftoppm", "-f", n, "-l", n, "-r", strconv.Itoa(pageDPI(ctx, pdf, page)), "-gray", "-png", "-singlefile", pdf, img); err != nil {
-			return "", fmt.Errorf("page %d: %w", page, err)
+		p := strconv.Itoa(page)
+		if _, err := run(ctx, "pdftoppm", "-f", p, "-l", p, "-r", strconv.Itoa(pageDPI(ctx, pdf, page)), "-gray", "-png", "-singlefile", pdf, img); err != nil {
+			return "", nil, fmt.Errorf("page %d: %w", page, err)
 		}
 		out, err := run(ctx, "tesseract", img+".png", "stdout", "-l", lang, "--psm", "3")
+		if err != nil && ctx.Err() == nil {
+			slog.Warn("OCR: trying the page as one block", "pdf", pdf, "page", page, "err", err)
+			out, err = run(ctx, "tesseract", img+".png", "stdout", "-l", lang, "--psm", "6")
+		}
 		os.Remove(img + ".png")
+		if ctx.Err() != nil {
+			return "", nil, ctx.Err()
+		}
 		if err != nil {
-			return "", fmt.Errorf("page %d: %w", page, err)
+			slog.Warn("OCR: skipping the page", "pdf", pdf, "page", page, "err", err)
+			skipped = append(skipped, page)
+			lastErr = fmt.Errorf("page %d: %w", page, err)
+			out = ""
 		}
 		if page > 1 {
 			text.WriteString("\f")
 		}
 		text.WriteString(out)
 	}
-	return text.String(), nil
+	if n > 0 && len(skipped) == n {
+		return "", nil, lastErr
+	}
+	return text.String(), skipped, nil
+}
+
+// skippedWarning says which pages OCR couldn't read.
+func skippedWarning(pages []int) string {
+	if len(pages) == 0 {
+		return ""
+	}
+	list := make([]string, len(pages))
+	for i, p := range pages {
+		list[i] = strconv.Itoa(p)
+	}
+	if len(pages) == 1 {
+		return "OCR couldn't read page " + list[0] + ", so its text isn't searchable."
+	}
+	return "OCR couldn't read pages " + strings.Join(list, ", ") + ", so their text isn't searchable."
 }
 
 var lowPriority = sync.OnceValue(func() bool {

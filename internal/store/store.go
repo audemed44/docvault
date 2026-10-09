@@ -130,6 +130,8 @@ var migrations = []string{
 	// 8: the document has been read and waits only for its suggestion
 	// (asked for by its own pool of workers).
 	`ALTER TABLE documents ADD COLUMN read_done INTEGER NOT NULL DEFAULT 0`,
+	// 9: read, but not all of it (a page OCR couldn't read).
+	`ALTER TABLE documents ADD COLUMN warning TEXT NOT NULL DEFAULT ''`,
 }
 
 // Open opens (or creates) the database.
