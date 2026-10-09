@@ -117,6 +117,8 @@ export interface Filter {
   suggested: boolean;
   unclassified: boolean;
   warnings: boolean;
+  /** "added": newest added first; otherwise by the document's date. */
+  sort?: "" | "added";
 }
 
 export interface Person {
