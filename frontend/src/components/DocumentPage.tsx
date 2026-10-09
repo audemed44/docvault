@@ -207,7 +207,14 @@ function ProcessingNote(props: {
       </div>
     );
   }
-  if (doc.status !== "failed") return null;
+  if (doc.status !== "failed") {
+    if (!doc.warning) return null;
+    return (
+      <div class="note note-warn">
+        <strong>Partly read.</strong> {doc.warning}
+      </div>
+    );
+  }
   return (
     <div class="note note-bad">
       <strong>Processing failed.</strong> {doc.error}

@@ -212,7 +212,8 @@ func filterOf(r *http.Request) store.Filter {
 	q := r.URL.Query()
 	f := store.Filter{Query: q.Get("q"), Space: q.Get("space"), Tag: q.Get("tag"), Year: q.Get("year"),
 		Expiring: q.Get("expiring") == "1", Status: q.Get("status"),
-		Suggested: q.Get("suggested") == "1", Unclassified: q.Get("unclassified") == "1"}
+		Suggested: q.Get("suggested") == "1", Unclassified: q.Get("unclassified") == "1",
+		Warnings: q.Get("warnings") == "1"}
 	switch c := q.Get("category"); c {
 	case "", "all":
 	case "none":

@@ -344,3 +344,49 @@ func TestPageDPI(t *testing.T) {
 		t.Fatalf("big page at %d dpi", got)
 	}
 }
+
+// fakeOCRTools puts stand-ins for pdftoppm, pdfinfo and tesseract on PATH.
+// The page image holds its page number; tesseract crashes on the pages in
+// crash (as it does on some layouts), and on the pages in crashAlways
+// whatever the page segmentation mode.
+func fakeOCRTools(t *testing.T, crash, crashAlways string) {
+	t.Helper()
+	bin := t.TempDir()
+	write := func(name, script string) {
+		if err := os.WriteFile(filepath.Join(bin, name), []byte("#!/bin/sh\n"+script), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// pdftoppm -f N -l N … -singlefile PDF OUT
+	write("pdftoppm", `for a; do out=$a; done; echo "$2" > "$out.png"`)
+	write("pdfinfo", `exit 1`)
+	write("tesseract", `ulimit -c 0; page=$(cat "$1")
+for p in `+crashAlways+`; do [ "$p" = "$page" ] && kill -SEGV $$; done
+case "$*" in *"--psm 3"*) for p in `+crash+`; do [ "$p" = "$page" ] && kill -SEGV $$; done;; esac
+echo "text of page $page"`)
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+func TestOCRPageCrash(t *testing.T) {
+	ctx := context.Background()
+	fakeOCRTools(t, "2 3", "3")
+	text, skipped, err := ocr(ctx, "doc.pdf", 4, "eng", t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fmt.Sprint(skipped) != "[3]" {
+		t.Fatalf("skipped %v", skipped)
+	}
+	pages := strings.Split(text, "\f")
+	if len(pages) != 4 || !strings.Contains(pages[1], "page 2") || pages[2] != "" || !strings.Contains(pages[3], "page 4") {
+		t.Fatalf("text %q", text)
+	}
+	if w := skippedWarning(skipped); w != "OCR couldn't read page 3, so its text isn't searchable." {
+		t.Fatalf("warning %q", w)
+	}
+
+	fakeOCRTools(t, "", "1 2")
+	if _, _, err := ocr(ctx, "doc.pdf", 2, "eng", t.TempDir()); err == nil || !strings.Contains(err.Error(), "page 2") {
+		t.Fatalf("no page read: %v", err)
+	}
+}

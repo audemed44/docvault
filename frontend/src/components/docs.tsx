@@ -36,6 +36,13 @@ export function StatusChip(props: { doc: Doc }) {
     case "failed":
       return <span class="chip chip-bad">Failed</span>;
   }
+  if (props.doc.warning) {
+    return (
+      <span class="chip chip-warn" title={props.doc.warning}>
+        Partly read
+      </span>
+    );
+  }
   return null;
 }
 

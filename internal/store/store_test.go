@@ -302,3 +302,36 @@ func TestTagsJoinList(t *testing.T) {
 		t.Fatal("allergy listed twice")
 	}
 }
+
+func TestWarning(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+	me := addUser(t, s, "me")
+	d := addDoc(t, s, me, false, "Catalogue", "a", "")
+	addDoc(t, s, me, false, "Other", "b", "")
+	s.Requeue(ctx, me.ID, d.ID, true, "", true)
+	s.ClaimJob(ctx)
+	s.ReadDone(ctx, d.ID, JobResult{Pages: 3, TextSource: "ocr", Text: "read", Warning: "page 2"})
+	j, _ := s.ClaimSuggestion(ctx)
+	if j == nil || j.Warning != "page 2" {
+		t.Fatalf("handed over %+v", j)
+	}
+	s.FinishSuggestion(ctx, d.ID, JobResult{Pages: 3, TextSource: "ocr", Text: "read", Warning: j.Warning})
+	got, _ := s.Document(ctx, me.ID, d.ID)
+	if got.Status != "ready" || got.Warning != "page 2" {
+		t.Fatalf("finished %+v", got)
+	}
+	if f, _ := s.Facets(ctx, me.ID); f.Warnings != 1 {
+		t.Fatalf("facets %+v", f)
+	}
+	if docs, n, _ := s.Search(ctx, me.ID, Filter{Warnings: true}); n != 1 || docs[0].ID != d.ID {
+		t.Fatalf("warnings filter: %d %+v", n, docs)
+	}
+	// Read again, all of it: the warning goes.
+	s.Requeue(ctx, me.ID, d.ID, true, "", false)
+	s.ClaimJob(ctx)
+	s.FinishJob(ctx, d.ID, JobResult{Pages: 3, TextSource: "ocr", Text: "read"})
+	if got, _ := s.Document(ctx, me.ID, d.ID); got.Warning != "" {
+		t.Fatalf("warning kept %+v", got)
+	}
+}
