@@ -24,11 +24,11 @@
   --bg: #000;
   --raised: #0a0a0a;
   --fg: #fff;
-  --fg-2: rgb(255 255 255 / 0.62);
-  --fg-3: rgb(255 255 255 / 0.4);
+  --fg-2: rgb(255 255 255 / 0.8);
+  --fg-3: rgb(255 255 255 / 0.64);
   --fg-4: rgb(255 255 255 / 0.2);
-  --line: rgb(255 255 255 / 0.14);
-  --line-soft: rgb(255 255 255 / 0.08);
+  --line: rgb(255 255 255 / 0.24);
+  --line-soft: rgb(255 255 255 / 0.12);
   --panel-hover: rgb(255 255 255 / 0.05);
   --well-bg: rgb(255 255 255 / 0.05);
   --glow: 0.1;
@@ -47,8 +47,8 @@ html {
   background: var(--bg);
   color: var(--fg);
   font-family: var(--font-sans);
-  font-size: 14px;
-  line-height: 1.45;
+  font-size: 16px;
+  line-height: 1.5;
   font-feature-settings: "cv11", "ss01", "ss03";
   -webkit-font-smoothing: antialiased;
   -webkit-tap-highlight-color: transparent;
@@ -144,9 +144,9 @@ pre {
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
-  font-size: 10.5px;
+  font-size: 0.8125rem;
   font-weight: 600;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--fg-3);
 }
@@ -280,7 +280,7 @@ pre {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 15px;
+  font-size: 1.0625rem;
   font-weight: 800;
   letter-spacing: -0.02em;
 }
@@ -289,10 +289,10 @@ pre {
   gap: 4px;
 }
 .topnav a {
-  padding: 6px 10px;
-  font-size: 11px;
+  padding: 12px 12px;
+  font-size: 0.8125rem;
   font-weight: 600;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--fg-3);
   border-bottom: 2px solid transparent;
@@ -311,9 +311,9 @@ pre {
   gap: 6px;
   padding-right: 16px;
   border-right: 1px solid var(--line);
-  font-size: 11px;
+  font-size: 0.8125rem;
   font-weight: 600;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--fg-3);
 }
@@ -385,7 +385,7 @@ pre {
   min-width: 140px;
 }
 .figure-value {
-  font-size: 44px;
+  font-size: 2.75rem;
   font-weight: 800;
   letter-spacing: -0.05em;
   line-height: 0.95;
@@ -394,7 +394,7 @@ pre {
 }
 .figure-unit {
   margin-left: 3px;
-  font-size: 17px;
+  font-size: 1.125rem;
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--fg-3);
@@ -423,13 +423,13 @@ pre {
 .section-index {
   width: 22px;
   flex: none;
-  font-size: 12px;
+  font-size: 0.875rem;
   font-weight: 600;
   color: var(--accent-hi);
   font-variant-numeric: tabular-nums;
 }
 .section-name {
-  font-size: 26px;
+  font-size: 1.75rem;
   font-weight: 700;
   letter-spacing: -0.03em;
   line-height: 1.1;
@@ -442,10 +442,10 @@ pre {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  height: 36px;
+  height: 44px;
   padding: 0 16px;
   border: 1px solid var(--line);
-  font-size: 13px;
+  font-size: 0.9375rem;
   font-weight: 600;
   white-space: nowrap;
   transition:
@@ -478,21 +478,21 @@ pre {
   border-color: var(--line);
 }
 .btn-small {
-  height: 30px;
+  height: 40px;
   padding: 0 12px;
-  font-size: 12.5px;
+  font-size: 0.9375rem;
 }
 .btn-big {
-  height: 48px;
+  height: 56px;
   padding: 0 28px;
-  font-size: 15px;
+  font-size: 1.0625rem;
 }
 .icon-btn {
   display: grid;
   place-items: center;
   flex: none;
-  width: 34px;
-  height: 34px;
+  width: 44px;
+  height: 44px;
   border: 1px solid transparent;
   color: var(--fg-2);
 }
@@ -509,10 +509,10 @@ pre {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  height: 20px;
-  padding: 0 7px;
+  height: 24px;
+  padding: 0 8px;
   border: 1px solid var(--line);
-  font-size: 10.5px;
+  font-size: 0.8125rem;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -548,7 +548,7 @@ pre {
   border: 1px solid var(--line);
   border-left-width: 3px;
   padding: 12px 16px;
-  font-size: 13px;
+  font-size: 0.9375rem;
   color: var(--fg-2);
 }
 .note-bad {
@@ -564,6 +564,11 @@ pre {
 .link-btn {
   color: var(--accent-hi);
   font-weight: 600;
+}
+/* A bigger tap area without moving the layout. */
+button.link-btn {
+  padding: 10px 6px;
+  margin: -10px -6px;
 }
 .link-btn:hover {
   text-decoration: underline;
@@ -603,7 +608,7 @@ a.note:hover {
 
 .form-error {
   color: var(--bad);
-  font-size: 13px;
+  font-size: 0.9375rem;
 }
 
 .field {
@@ -613,27 +618,25 @@ a.note:hover {
   min-width: 0;
 }
 .field-label {
-  font-size: 10.5px;
+  font-size: 0.9375rem;
   font-weight: 600;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--fg-3);
+  color: var(--fg-2);
 }
 .field-hint {
-  font-size: 12px;
+  font-size: 0.875rem;
   color: var(--fg-3);
 }
 .input {
   width: 100%;
-  height: 38px;
-  padding: 0 12px;
+  height: 48px;
+  padding: 0 14px;
   background: transparent;
   border: 1px solid var(--line);
   border-radius: 0;
   outline: none;
   color: var(--fg);
   font: inherit;
-  font-size: 14px;
+  font-size: 1rem;
   transition: border-color 0.2s;
 }
 .input:focus {
@@ -644,20 +647,20 @@ a.note:hover {
 }
 .input.code {
   font-family: var(--font-mono);
-  font-size: 12.5px;
+  font-size: 0.9375rem;
 }
 .check {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
+  font-size: 0.9375rem;
   color: var(--fg-2);
   cursor: pointer;
 }
 .check input {
   accent-color: var(--accent);
-  width: 15px;
-  height: 15px;
+  width: 20px;
+  height: 20px;
 }
 
 .toolbar {
@@ -703,7 +706,7 @@ a.note:hover {
   border-top: 2px solid var(--fg);
 }
 .dialog-head h2 {
-  font-size: 22px;
+  font-size: 1.5rem;
   font-weight: 700;
   letter-spacing: -0.03em;
   overflow-wrap: anywhere;
@@ -740,7 +743,7 @@ a.note:hover {
   animation: fade-up 0.6s var(--ease) both;
 }
 .login-title {
-  font-size: 56px;
+  font-size: 3.5rem;
   font-weight: 800;
   letter-spacing: -0.055em;
   line-height: 0.9;
@@ -779,7 +782,7 @@ a.note:hover {
   overflow-wrap: anywhere;
 }
 .list-sub {
-  font-size: 12.5px;
+  font-size: 0.9375rem;
   color: var(--fg-3);
 }
 
@@ -808,8 +811,11 @@ a.note:hover {
   border: 1px solid var(--line);
 }
 .seg button {
-  padding: 4px 10px;
-  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  min-height: 42px;
+  padding: 0 16px;
+  font-size: 0.875rem;
   font-weight: 600;
   color: var(--fg-3);
 }
@@ -875,14 +881,14 @@ label.btn {
 .table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: 0.9375rem;
 }
 .table th {
   padding: 0 12px 10px 0;
   text-align: left;
-  font-size: 10.5px;
+  font-size: 0.8125rem;
   font-weight: 600;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--fg-3);
   white-space: nowrap;
@@ -897,7 +903,7 @@ label.btn {
   text-align: right;
 }
 .table td:last-child {
-  width: 34px;
+  width: 44px;
   padding-right: 0;
 }
 
@@ -925,8 +931,8 @@ label.btn {
   background: var(--raised);
 }
 .select-auto {
-  height: 30px;
-  font-size: 12.5px;
+  height: 40px;
+  font-size: 0.9375rem;
 }
 .input-inline {
   width: auto;
@@ -953,7 +959,7 @@ input[type="date"].input {
   gap: 10px;
 }
 .library-bar .btn {
-  height: 44px;
+  height: 52px;
 }
 .search {
   flex: 1;
@@ -961,7 +967,7 @@ input[type="date"].input {
   display: flex;
   align-items: center;
   gap: 10px;
-  height: 44px;
+  height: 52px;
   padding: 0 14px;
   border: 1px solid var(--line);
   color: var(--fg-3);
@@ -979,7 +985,7 @@ input[type="date"].input {
   outline: none;
   color: var(--fg);
   font: inherit;
-  font-size: 15px;
+  font-size: 1.0625rem;
 }
 .filters {
   display: flex;
@@ -989,12 +995,12 @@ input[type="date"].input {
   margin-top: -24px;
 }
 .filters .seg button {
-  height: 36px;
+  height: 44px;
   padding: 0 12px;
 }
 .filters .select {
-  height: 38px;
-  font-size: 13px;
+  height: 44px;
+  font-size: 0.9375rem;
 }
 .results-head {
   display: flex;
@@ -1068,7 +1074,7 @@ input[type="date"].input {
   overflow: hidden;
 }
 .doc-card-meta {
-  font-size: 12px;
+  font-size: 0.875rem;
   color: var(--fg-3);
 }
 .doc-card .chips:empty {
@@ -1078,11 +1084,11 @@ input[type="date"].input {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 11px;
+  font-size: 0.8125rem;
   color: var(--fg-3);
 }
 .snippet {
-  font-size: 12px;
+  font-size: 0.875rem;
   color: var(--fg-2);
   overflow-wrap: anywhere;
   display: -webkit-box;
@@ -1112,7 +1118,7 @@ input[type="date"].input {
   gap: 4px;
 }
 .row-title {
-  font-size: 14px;
+  font-size: 1rem;
   font-weight: 600;
 }
 .row-title:hover {
@@ -1194,7 +1200,7 @@ input[type="date"].input {
     margin: 0 auto;
   }
   .doc-actions .btn {
-    height: 44px;
+    height: 52px;
   }
 }
 .note-actions {
@@ -1212,20 +1218,18 @@ input[type="date"].input {
 }
 .kv > div {
   display: grid;
-  grid-template-columns: 90px minmax(0, 1fr);
+  grid-template-columns: 110px minmax(0, 1fr);
   gap: 12px;
   align-items: baseline;
 }
 .kv-wide > div {
-  grid-template-columns: 140px minmax(0, 1fr);
+  grid-template-columns: 160px minmax(0, 1fr);
   padding: 8px 0;
   border-bottom: 1px solid var(--line-soft);
 }
 .kv dt {
-  font-size: 10.5px;
+  font-size: 0.9375rem;
   font-weight: 600;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
   color: var(--fg-3);
 }
 .kv dd {
@@ -1233,7 +1237,7 @@ input[type="date"].input {
   overflow-wrap: anywhere;
 }
 .hash {
-  font-size: 11.5px;
+  font-size: 0.8125rem;
   color: var(--fg-2);
 }
 @media (max-width: 560px) {
@@ -1254,7 +1258,7 @@ input[type="date"].input {
 }
 .doc-text pre {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 0.875rem;
   line-height: 1.55;
   color: var(--fg-2);
   white-space: pre-wrap;
@@ -1355,7 +1359,7 @@ input[type="date"].input {
   width: 36px;
   text-align: right;
   margin-right: 6px;
-  font-size: 12px;
+  font-size: 0.875rem;
 }
 
 @media (max-width: 560px) {
@@ -1387,7 +1391,7 @@ input[type="date"].input {
     width: 100%;
   }
   .figure-value {
-    font-size: 36px;
+    font-size: 2.25rem;
   }
   .library-bar .btn {
     padding: 0 14px;
@@ -1424,15 +1428,15 @@ input[type="date"].input {
   border-bottom: 1px solid var(--line-soft);
 }
 .vocab-cat {
-  font-size: 10.5px;
+  font-size: 0.8125rem;
   font-weight: 600;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--fg-3);
 }
 .vocab-add {
-  width: 90px;
-  height: 22px;
+  width: 100px;
+  height: 30px;
   margin: 2px 0;
   padding: 0 6px;
   background: none;
@@ -1440,7 +1444,7 @@ input[type="date"].input {
   color: var(--fg);
   font: inherit;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 0.8125rem;
   outline: none;
 }
 .vocab-add:focus {
@@ -1461,13 +1465,13 @@ input[type="date"].input {
 }
 .person-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) 34px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) 44px;
   gap: 6px;
   width: 100%;
 }
 @media (max-width: 560px) {
   .person-row {
-    grid-template-columns: minmax(0, 1fr) 34px;
+    grid-template-columns: minmax(0, 1fr) 44px;
   }
   .person-row input:nth-child(2) {
     grid-row: 2;
@@ -1537,7 +1541,7 @@ input[type="date"].input {
   input:not([type="checkbox"], [type="radio"], [type="file"]),
   select,
   textarea {
-    font-size: 16px;
+    font-size: 1rem;
   }
 }
 
@@ -1555,8 +1559,8 @@ input[type="date"].input {
   text-align: left;
 }
 .filters .picker-button {
-  height: 38px;
-  font-size: 13px;
+  height: 44px;
+  font-size: 0.9375rem;
 }
 .picker-set {
   border-color: rgb(var(--accent-rgb) / 0.7);
@@ -1596,7 +1600,7 @@ input[type="date"].input {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 40px;
+  height: 48px;
   padding: 0 12px;
   border-bottom: 1px solid var(--line);
   color: var(--fg-3);
@@ -1610,11 +1614,11 @@ input[type="date"].input {
   outline: none;
   color: var(--fg);
   font: inherit;
-  font-size: 14px;
+  font-size: 1rem;
 }
 .picker-list {
   /* MENU_ROWS rows, then it scrolls */
-  max-height: calc(8 * 36px);
+  max-height: calc(8 * 44px);
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -1623,13 +1627,13 @@ input[type="date"].input {
   align-items: center;
   gap: 8px;
   width: 100%;
-  height: 36px;
+  height: 44px;
   padding: 0 12px;
   background: none;
   border: 0;
   color: var(--fg-2);
   font: inherit;
-  font-size: 13.5px;
+  font-size: 1rem;
   text-align: left;
   cursor: pointer;
 }
@@ -1653,7 +1657,7 @@ input[type="date"].input {
 .picker-empty {
   padding: 10px 12px;
   color: var(--fg-3);
-  font-size: 13px;
+  font-size: 0.9375rem;
 }
 @media (max-width: 760px) {
   .filters .picker {
@@ -1667,12 +1671,12 @@ input[type="date"].input {
   .filters .picker-button,
   .picker-search input,
   .picker-option {
-    font-size: 16px;
+    font-size: 1rem;
   }
   .picker-option {
-    height: 42px;
+    height: 48px;
   }
   .picker-list {
-    max-height: calc(8 * 42px);
+    max-height: calc(8 * 48px);
   }
 }
