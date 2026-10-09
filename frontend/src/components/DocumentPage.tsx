@@ -1,7 +1,10 @@
 import {
   ArrowLeft,
   Download,
-  ExternalLink,
+  Eye,
+  FileText,
+  Info,
+  Pencil,
   RefreshCw,
   Share2,
   Sparkles,
@@ -11,16 +14,23 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import { api, docURL } from "../api";
 import { useData, useUnsavedWarning } from "../hooks";
 import { ago, bytes, expiryText, formatDate, langName, plural } from "../lib";
-import { navigate } from "../router";
+import { goBack, navigate } from "../router";
 import type { Category, Doc, Settings, User } from "../types";
 import { CategorySelect, DocThumb, SpaceToggle } from "./docs";
-import { ErrorNote, Field, SectionHead, useAction } from "./ui";
+import { Disclosure, ErrorNote, Field, useAction } from "./ui";
 
+/**
+ * One document, read first: what it is in plain words and three big
+ * actions. Changing it, its text and the file's details open on purpose.
+ */
 export function DocumentPage(props: { id: number; user: User }) {
   const doc = useData(() => api.document(props.id), 0, [props.id]);
   const cats = useData(api.categories);
   const settings = useData(api.settings);
+  const [open, setOpen] = useState("");
   const d = doc.data;
+  const admin = props.user.admin;
+  const toggle = (name: string) => setOpen(open === name ? "" : name);
 
   // Follow processing until it's done.
   const busy = d?.status === "pending" || d?.status === "processing";
@@ -40,56 +50,148 @@ export function DocumentPage(props: { id: number; user: User }) {
   }
   if (!d) return <div class="page loading loading-page" />;
   const showClassifier =
+    admin &&
     (!!settings.data?.classifier || !!d.classified || !!d.classify_error) &&
     d.status !== "pending" &&
     d.status !== "processing";
 
   return (
-    <div class="page">
+    <div class="page doc-page">
       <header class="page-head">
         <BackLink />
-        <div class="eyebrow eyebrow-accent">
-          {d.category || "Inbox"} · {d.family ? "Family" : "Private"}
-          {d.added_by && ` · added by ${d.added_by}`}
-        </div>
         <h1 class="page-title page-title-small doc-title">{d.title}</h1>
       </header>
 
-      <div class="doc-layout">
-        <div class="doc-side">
-          <a class="doc-preview" href={docURL.file(d.id)} target="_blank" rel="noopener">
-            <DocThumb doc={d} class="thumb-large" />
-          </a>
-          <DocActions doc={d} />
-        </div>
-
-        <div class="doc-main">
-          {d.suggestion && <SuggestionNote doc={d} onDone={doc.setData} />}
-          <ProcessingNote doc={d} settings={settings.data} onQueued={doc.setData} />
-          <EditForm key={d.updated} doc={d} categories={cats.data ?? []} onSaved={doc.setData} />
-        </div>
+      <div class="doc-top">
+        <a
+          class="doc-preview"
+          href={docURL.file(d.id)}
+          target="_blank"
+          rel="noopener"
+          aria-label="Open the document"
+        >
+          <DocThumb doc={d} class="thumb-large" />
+        </a>
+        <Facts doc={d} />
+        <DocActions doc={d} />
       </div>
 
-      {d.status !== "pending" && d.status !== "processing" && (
-        <TextSection doc={d} settings={settings.data} onQueued={doc.setData} />
-      )}
-      {showClassifier && (
-        <ClassifierSection doc={d} settings={settings.data} onQueued={doc.setData} />
-      )}
-      <FileSection doc={d} index={busy ? 1 : showClassifier ? 3 : 2} />
+      <ProcessingNote doc={d} admin={admin} onQueued={doc.setData} />
+      {admin && d.suggestion && <SuggestionNote doc={d} onDone={doc.setData} />}
+
+      <div class="disclosures">
+        <Disclosure
+          icon={<Pencil size={22} />}
+          title="Change name, type or dates"
+          open={open === "edit"}
+          onToggle={() => toggle("edit")}
+        >
+          <EditForm
+            key={d.updated}
+            doc={d}
+            categories={cats.data ?? []}
+            onSaved={(saved) => {
+              doc.setData(saved);
+              setOpen("");
+            }}
+            onCancel={() => setOpen("")}
+          />
+        </Disclosure>
+        {!busy && (
+          <Disclosure
+            icon={<FileText size={22} />}
+            title="Show the words in it"
+            open={open === "text"}
+            onToggle={() => toggle("text")}
+          >
+            <TextSection doc={d} settings={settings.data} onQueued={doc.setData} />
+          </Disclosure>
+        )}
+        {showClassifier && (
+          <Disclosure
+            icon={<Sparkles size={22} />}
+            title="Suggestions"
+            open={open === "suggest"}
+            onToggle={() => toggle("suggest")}
+          >
+            <ClassifierSection doc={d} settings={settings.data} onQueued={doc.setData} />
+          </Disclosure>
+        )}
+        <Disclosure
+          icon={<Info size={22} />}
+          title="File details"
+          open={open === "file"}
+          onToggle={() => toggle("file")}
+        >
+          <FileSection doc={d} admin={admin} />
+        </Disclosure>
+        <DeleteRow doc={d} />
+      </div>
     </div>
   );
 }
 
 function BackLink() {
   return (
-    <a class="eyebrow back" href="/">
-      <ArrowLeft size={13} /> Library
+    <a
+      class="back"
+      href="/"
+      onClick={(e) => {
+        e.preventDefault();
+        goBack("/");
+      }}
+    >
+      <ArrowLeft size={20} /> Back
     </a>
   );
 }
 
-/** Open, download and share (the share sheet on iPhone). */
+/** What it is, in a few plain lines. */
+function Facts(props: { doc: Doc }) {
+  const d = props.doc;
+  const expiry = d.expires ? expiryText(d.expires) : null;
+  return (
+    <dl class="facts">
+      <div>
+        <dt>Type</dt>
+        <dd>{d.category || "Not sorted yet"}</dd>
+      </div>
+      {d.doc_date && (
+        <div>
+          <dt>Date</dt>
+          <dd>{formatDate(d.doc_date)}</dd>
+        </div>
+      )}
+      {d.expires && expiry && (
+        <div>
+          <dt>Expires</dt>
+          <dd class={expiry.tone ? `tone-${expiry.tone}` : ""}>
+            {formatDate(d.expires)}
+            {expiry.tone && <span class="facts-sub">{expiry.text}</span>}
+          </dd>
+        </div>
+      )}
+      <div>
+        <dt>Who can see it</dt>
+        <dd>{d.family ? "The family" : "Only you"}</dd>
+      </div>
+      {d.tags.length > 0 && (
+        <div>
+          <dt>Tags</dt>
+          <dd>{d.tags.join(", ")}</dd>
+        </div>
+      )}
+      {d.notes && (
+        <div>
+          <dt>Notes</dt>
+          <dd class="facts-notes">{d.notes}</dd>
+        </div>
+      )}
+    </dl>
+  );
+}
+
+/** Open, share (the share sheet on iPhone) and save a copy. */
 function DocActions(props: { doc: Doc }) {
   const d = props.doc;
   const name = `${d.title.replace(/[/\\:*?"<>|]/g, "_")}.pdf`;
@@ -124,16 +226,21 @@ function DocActions(props: { doc: Doc }) {
 
   return (
     <div class="doc-actions">
-      <a class="btn btn-primary" href={docURL.file(d.id)} target="_blank" rel="noopener">
-        <ExternalLink size={14} /> Open
+      <a
+        class="btn btn-primary btn-big doc-open"
+        href={docURL.file(d.id)}
+        target="_blank"
+        rel="noopener"
+      >
+        <Eye size={20} /> Open document
       </a>
       {shareable && (
-        <button class="btn" onClick={share}>
-          <Share2 size={14} /> Share
+        <button class="btn btn-big" onClick={share}>
+          <Share2 size={20} /> Send / Share
         </button>
       )}
-      <a class="btn" href={docURL.file(d.id, true)} download>
-        <Download size={14} /> Download
+      <a class="btn btn-big" href={docURL.file(d.id, true)} download>
+        <Download size={20} /> Save a copy
       </a>
       {error && <div class="form-error">{error}</div>}
     </div>
@@ -145,7 +252,7 @@ function SuggestionNote(props: { doc: Doc; onDone: (d: Doc) => void }) {
   const s = doc.suggestion!;
   const { busy, error, run } = useAction();
   const rows: [string, string][] = [];
-  if (s.category && s.category !== doc.category) rows.push(["Category", s.category]);
+  if (s.category && s.category !== doc.category) rows.push(["Type", s.category]);
   if (s.tags?.length) rows.push(["Tags", s.tags.join(", ")]);
   if (s.new_tags?.length)
     rows.push(["New tags", `${s.new_tags.join(", ")} (not on your tag list)`]);
@@ -190,18 +297,14 @@ function SuggestionNote(props: { doc: Doc; onDone: (d: Doc) => void }) {
   );
 }
 
-function ProcessingNote(props: {
-  doc: Doc;
-  settings: Settings | null;
-  onQueued: (d: Doc) => void;
-}) {
+function ProcessingNote(props: { doc: Doc; admin: boolean; onQueued: (d: Doc) => void }) {
   const { doc } = props;
   const { busy, error, run } = useAction();
   if (doc.status === "pending" || doc.status === "processing") {
     return (
       <div class="note note-accent">
-        <span class="dot accent" /> Reading the document: thumbnail, text, and OCR if it's a scan.
-        Long scans take a minute or two.
+        <span class="dot accent" /> Reading the document so it can be searched. Long scans take a
+        minute or two; you can leave this page.
       </div>
     );
   }
@@ -209,28 +312,37 @@ function ProcessingNote(props: {
     if (!doc.warning) return null;
     return (
       <div class="note note-warn">
-        <strong>Partly read.</strong> {doc.warning}
+        <strong>Some pages couldn't be read,</strong> so searching may miss words on them. The
+        document itself is fine.
+        {props.admin && <div class="muted note-detail">{doc.warning}</div>}
       </div>
     );
   }
   return (
     <div class="note note-bad">
-      <strong>Processing failed.</strong> {doc.error}
+      <strong>This document couldn't be read.</strong> It's saved, but its picture and words aren't
+      ready.
+      {doc.error && <div class="muted note-detail">{doc.error}</div>}
       {error && <div class="form-error">{error}</div>}
       <div class="toolbar note-actions">
         <button
-          class="btn btn-small"
+          class="btn"
           disabled={busy}
           onClick={() => run(async () => props.onQueued(await api.reprocess(doc.id, false)))}
         >
-          <RefreshCw size={13} /> Try again
+          <RefreshCw size={16} /> Try again
         </button>
       </div>
     </div>
   );
 }
 
-function EditForm(props: { doc: Doc; categories: Category[]; onSaved: (d: Doc) => void }) {
+function EditForm(props: {
+  doc: Doc;
+  categories: Category[];
+  onSaved: (d: Doc) => void;
+  onCancel: () => void;
+}) {
   const [d, setD] = useState(props.doc);
   const [tags, setTags] = useState(props.doc.tags.join(", "));
   const { busy, error, run } = useAction();
@@ -257,7 +369,7 @@ function EditForm(props: { doc: Doc; categories: Category[]; onSaved: (d: Doc) =
   const save = (e: Event) => {
     e.preventDefault();
     if (edited.family !== props.doc.family && !edited.family && props.doc.family) {
-      if (!confirm("Move it out of Family into your own library? Others won't see it any more.")) {
+      if (!confirm("Make it private? The rest of the family won't see it any more.")) {
         return;
       }
     }
@@ -267,22 +379,23 @@ function EditForm(props: { doc: Doc; categories: Category[]; onSaved: (d: Doc) =
 
   return (
     <form class="form doc-form" onSubmit={save}>
-      <Field label="Title">
+      <Field label="Name">
         <input
           class="input"
           value={d.title}
           onInput={(e) => setD({ ...d, title: e.currentTarget.value })}
         />
       </Field>
+      <Field label="Type">
+        <CategorySelect
+          value={String(d.category_id)}
+          categories={props.categories}
+          onChange={(v) => setD({ ...d, category_id: Number(v) })}
+          inbox="Not sorted yet"
+        />
+      </Field>
       <div class="form-grid">
-        <Field label="Category">
-          <CategorySelect
-            value={String(d.category_id)}
-            categories={props.categories}
-            onChange={(v) => setD({ ...d, category_id: Number(v) })}
-          />
-        </Field>
-        <Field label="Document date">
+        <Field label="Date on the document">
           <input
             class="input"
             type="date"
@@ -291,12 +404,12 @@ function EditForm(props: { doc: Doc; categories: Category[]; onSaved: (d: Doc) =
           />
         </Field>
         <Field
-          label="Expires"
+          label="Expires on"
           hint={
             expiry ? (
               <span class={`tone-${expiry.tone}`}>{expiry.text}</span>
             ) : (
-              "Passport, policy, licence…"
+              "For a passport, policy, licence…"
             )
           }
         >
@@ -308,7 +421,7 @@ function EditForm(props: { doc: Doc; categories: Category[]; onSaved: (d: Doc) =
           />
         </Field>
       </div>
-      <Field label="Tags" hint="Comma-separated">
+      <Field label="Tags" hint="Words to find it by, with commas between them">
         <input class="input" value={tags} onInput={(e) => setTags(e.currentTarget.value)} />
       </Field>
       <Field label="Notes">
@@ -321,22 +434,21 @@ function EditForm(props: { doc: Doc; categories: Category[]; onSaved: (d: Doc) =
       </Field>
       <SpaceToggle family={d.family} onChange={(family) => setD({ ...d, family })} />
       {error && <div class="form-error">{error}</div>}
-      <div class="toolbar">
-        <button class="btn btn-primary" disabled={!dirty || busy || !d.title.trim()}>
-          Save
+      <div class="add-buttons">
+        <button class="btn btn-primary btn-big" disabled={!dirty || busy || !d.title.trim()}>
+          Save changes
         </button>
-        {dirty && (
-          <button
-            type="button"
-            class="btn btn-ghost"
-            onClick={() => {
-              setD(props.doc);
-              setTags(props.doc.tags.join(", "));
-            }}
-          >
-            Undo changes
-          </button>
-        )}
+        <button
+          type="button"
+          class="btn btn-big"
+          onClick={() => {
+            setD(props.doc);
+            setTags(props.doc.tags.join(", "));
+            props.onCancel();
+          }}
+        >
+          Cancel
+        </button>
       </div>
     </form>
   );
@@ -345,7 +457,6 @@ function EditForm(props: { doc: Doc; categories: Category[]; onSaved: (d: Doc) =
 function TextSection(props: { doc: Doc; settings: Settings | null; onQueued: (d: Doc) => void }) {
   const { doc, settings } = props;
   const text = useData(() => api.documentText(doc.id), 0, [doc.id, doc.updated, doc.status]);
-  const [open, setOpen] = useState(false);
   const [lang, setLang] = useState(doc.ocr_lang || settings?.ocr_langs || "eng+hin");
   const { busy, error, run } = useAction();
   const t = text.data?.text ?? "";
@@ -353,33 +464,26 @@ function TextSection(props: { doc: Doc; settings: Settings | null; onQueued: (d:
   const options = Array.from(new Set([...langs, langs.join("+"), lang])).filter(Boolean);
 
   return (
-    <section class="section">
-      <SectionHead index={1} title="Text">
-        <span class="muted">
-          {doc.text_source === "pdf" && "From the PDF's own text layer"}
-          {doc.text_source === "ocr" && `OCR · ${langName(doc.ocr_lang || "")}`}
-          {!doc.text_source && "None found"}
-        </span>
-      </SectionHead>
+    <div class="section">
+      <p class="muted">
+        {doc.text_source === "pdf" && "These are the words search looks through."}
+        {doc.text_source === "ocr" &&
+          `Read from the picture (${langName(doc.ocr_lang || "")}). These are the words search looks through.`}
+        {!doc.text_source && "No words found in it yet."}
+      </p>
       {t ? (
-        <div class={`doc-text ${open ? "open" : ""}`}>
+        <div class="doc-text open">
           <pre>{t}</pre>
-          {!open && t.length > 600 && (
-            <button class="link-btn doc-text-more" onClick={() => setOpen(true)}>
-              Show all
-            </button>
-          )}
         </div>
       ) : (
-        <p class="muted">
-          {text.data ? "No text yet. Run OCR if this is a scan." : text.error || "Loading…"}
-        </p>
+        <p class="muted">{text.data ? "" : text.error || "Loading…"}</p>
       )}
+      <p class="muted">Words wrong or missing? Read it again, in these languages:</p>
       <div class="toolbar">
         <select
           class="input select select-auto"
           value={lang}
-          aria-label="OCR language"
+          aria-label="Languages to read"
           onChange={(e) => setLang(e.currentTarget.value)}
         >
           {options.map((l) => (
@@ -389,15 +493,15 @@ function TextSection(props: { doc: Doc; settings: Settings | null; onQueued: (d:
           ))}
         </select>
         <button
-          class="btn btn-small"
+          class="btn"
           disabled={busy}
           onClick={() => run(async () => props.onQueued(await api.reprocess(doc.id, true, lang)))}
         >
-          <RefreshCw size={13} /> {doc.text_source === "ocr" ? "Run OCR again" : "Run OCR"}
+          <RefreshCw size={16} /> Read the text again
         </button>
         {error && <span class="form-error">{error}</span>}
       </div>
-    </section>
+    </div>
   );
 }
 
@@ -412,20 +516,16 @@ function ClassifierSection(props: {
   const { busy, error, run } = useAction();
   const on = !!settings?.classifier;
   return (
-    <section class="section">
-      <SectionHead index={2} title="Suggestions">
-        <span class="muted">
-          {settings?.classifier.startsWith("llm:")
-            ? settings.classifier.slice(4)
-            : on
-              ? "Classifier"
-              : "Off"}
-        </span>
-      </SectionHead>
+    <div class="section">
       {doc.classify_error && (
         <div class="note note-warn">Couldn't get a suggestion: {doc.classify_error}</div>
       )}
       <p class="muted">
+        {settings?.classifier.startsWith("llm:")
+          ? `${settings.classifier.slice(4)}. `
+          : on
+            ? "Classifier. "
+            : "Off. "}
         {doc.classified
           ? `Last asked ${ago(doc.classified)}${doc.suggestion ? "; the suggestion is above." : "; nothing to suggest, or it was applied."}`
           : "Not asked yet."}{" "}
@@ -464,56 +564,68 @@ function ClassifierSection(props: {
         </button>
         {error && <span class="form-error">{error}</span>}
       </div>
-    </section>
+    </div>
   );
 }
 
-function FileSection(props: { doc: Doc; index: number }) {
+function FileSection(props: { doc: Doc; admin: boolean }) {
+  const d = props.doc;
+  const photo = d.mime.startsWith("image/");
+  return (
+    <div class="section">
+      <dl class="kv kv-wide">
+        <div>
+          <dt>Added</dt>
+          <dd>
+            {formatDate(d.created.slice(0, 10))} {d.added_by && `by ${d.added_by}`}
+          </dd>
+        </div>
+        <div>
+          <dt>Came in as</dt>
+          <dd>{d.file_name}</dd>
+        </div>
+        <div>
+          <dt>Kind</dt>
+          <dd>
+            {photo ? "A photo, shown as a PDF" : "PDF"}
+            {d.pages > 0 && ` · ${plural(d.pages, "page")}`} · {bytes(d.size)}
+          </dd>
+        </div>
+        {props.admin && (
+          <div>
+            <dt>SHA-256</dt>
+            <dd class="mono hash">{d.sha256}</dd>
+          </div>
+        )}
+      </dl>
+      <div class="toolbar">
+        <a class="btn" href={docURL.original(d.id)} download>
+          <Download size={16} /> {photo ? "Save the original photo" : "Save the original file"}
+        </a>
+      </div>
+    </div>
+  );
+}
+
+function DeleteRow(props: { doc: Doc }) {
   const d = props.doc;
   const { busy, error, run } = useAction();
   const remove = () =>
     run(async () => {
-      if (!confirm(`Delete “${d.title}” and its file? This can't be undone.`)) return;
+      if (!confirm(`Delete “${d.title}”? This can't be undone.`)) return;
       await api.deleteDocument(d.id);
-      navigate("/");
+      navigate("/", true);
     });
-  const photo = d.mime.startsWith("image/");
   return (
-    <section class="section">
-      <SectionHead index={props.index} title="File" />
-      <dl class="kv kv-wide">
-        <div>
-          <dt>Uploaded as</dt>
-          <dd>{d.file_name}</dd>
-        </div>
-        <div>
-          <dt>Type</dt>
-          <dd>
-            {photo ? `Photo (${d.mime.slice(6).toUpperCase()}), shown as a PDF` : "PDF"}
-            {d.pages > 0 && ` · ${plural(d.pages, "page")}`} · {bytes(d.size)}
-          </dd>
-        </div>
-        <div>
-          <dt>Added</dt>
-          <dd>
-            {new Date(d.created).toLocaleString()} {d.added_by && `by ${d.added_by}`}
-          </dd>
-        </div>
-        <div>
-          <dt>SHA-256</dt>
-          <dd class="mono hash">{d.sha256}</dd>
-        </div>
-      </dl>
+    <>
+      <Disclosure
+        icon={<Trash2 size={22} />}
+        title={busy ? "Deleting…" : "Delete this document"}
+        open={false}
+        onToggle={remove}
+        danger
+      />
       {error && <ErrorNote>{error}</ErrorNote>}
-      <div class="toolbar">
-        <a class="btn btn-small" href={docURL.original(d.id)} download>
-          <Download size={13} /> {photo ? "Original photo" : "Original file"}
-        </a>
-        <span class="spacer" />
-        <button class="btn btn-danger btn-small" onClick={remove} disabled={busy}>
-          <Trash2 size={13} /> Delete
-        </button>
-      </div>
-    </section>
+    </>
   );
 }
