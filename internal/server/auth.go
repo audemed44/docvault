@@ -221,6 +221,8 @@ type accountBody struct {
 	Username string `json:"username"`
 	Name     string `json:"name"`
 	Admin    bool   `json:"admin"`
+	// TextSize is left as it is when missing.
+	TextSize *string `json:"text_size"`
 }
 
 func (b *accountBody) clean() string {
@@ -234,8 +236,14 @@ func (b *accountBody) clean() string {
 		return "a username is required (no spaces, up to 40 characters)"
 	case len(b.Name) > 80:
 		return "the name is too long"
+	case b.TextSize != nil && !validTextSize(*b.TextSize):
+		return `text size is "", "large" or "larger"`
 	}
 	return ""
+}
+
+func validTextSize(s string) bool {
+	return s == "" || s == "large" || s == "larger"
 }
 
 // setup creates the first account, an admin, on a fresh install.
@@ -263,19 +271,27 @@ func (s *Server) setup(w http.ResponseWriter, r *http.Request) {
 // updateMe changes your own name.
 func (s *Server) updateMe(w http.ResponseWriter, r *http.Request) {
 	me := currentUser(r)
+	// Either may be left out.
 	var body struct {
-		Name string `json:"name"`
+		Name     *string `json:"name"`
+		TextSize *string `json:"text_size"`
 	}
 	if !readJSON(w, r, 4<<10, &body) {
 		return
 	}
-	acc := accountBody{Username: me.Username, Name: body.Name}
+	acc := accountBody{Username: me.Username, Name: me.Name, TextSize: body.TextSize}
+	if body.Name != nil {
+		acc.Name = *body.Name
+	}
 	if msg := acc.clean(); msg != "" {
 		writeError(w, http.StatusBadRequest, msg)
 		return
 	}
 	u := *me
 	u.Name = acc.Name
+	if acc.TextSize != nil {
+		u.TextSize = *acc.TextSize
+	}
 	if err := s.Store.UpdateUser(r.Context(), &u); err != nil {
 		storeError(w, err)
 		return
@@ -305,6 +321,9 @@ func (s *Server) saveUser(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.PathValue("id") == "" {
 		u := &store.User{Username: body.Username, Name: body.Name, Admin: body.Admin}
+		if body.TextSize != nil {
+			u.TextSize = *body.TextSize
+		}
 		if err := s.Store.CreateUser(r.Context(), u); err != nil {
 			if errors.Is(err, store.ErrConflict) {
 				writeError(w, http.StatusConflict, "that username is taken")
@@ -330,6 +349,9 @@ func (s *Server) saveUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u.Name, u.Admin = body.Name, body.Admin
+	if body.TextSize != nil {
+		u.TextSize = *body.TextSize
+	}
 	if err := s.Store.UpdateUser(r.Context(), u); err != nil {
 		storeError(w, err)
 		return

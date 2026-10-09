@@ -173,6 +173,19 @@ func TestSetupAndSignIn(t *testing.T) {
 	if u.Name != "Papa" {
 		t.Fatalf("name %q", u.Name)
 	}
+	// Text size alone keeps the name; an admin can set it for someone, and
+	// leaving it out keeps it.
+	x.json(x.do("PUT", "/api/me", `{"text_size":"large"}`, dad), 200, &u)
+	if u.Name != "Papa" || u.TextSize != "large" {
+		t.Fatalf("text size: %+v", u)
+	}
+	x.json(x.do("PUT", "/api/me", `{"text_size":"huge"}`, dad), 400, nil)
+	x.json(x.do("PUT", "/api/users/"+itoa(u.ID), `{"username":"dad","name":"Papa","text_size":"larger"}`, me), 200, &u)
+	x.json(x.do("PUT", "/api/users/"+itoa(u.ID), `{"username":"dad","name":"Papa"}`, me), 200, &u)
+	x.json(x.do("GET", "/api/session", "", dad), 200, &info)
+	if info.User.TextSize != "larger" {
+		t.Fatalf("after admin edit: %+v", info.User)
+	}
 
 	x.json(x.do("DELETE", "/api/session", "", me), 204, nil)
 	x.json(x.do("GET", "/api/documents", "", me), 401, nil)

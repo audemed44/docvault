@@ -25,6 +25,13 @@ export function App() {
     load();
   }, []);
 
+  // Each person's text size scales every rem in the stylesheet.
+  const textSize = session?.user?.text_size ?? "";
+  useEffect(() => {
+    if (textSize) document.documentElement.dataset.textSize = textSize;
+    else delete document.documentElement.dataset.textSize;
+  }, [textSize]);
+
   if (error) return <div class="boot">Can't reach Docvault: {error}</div>;
   if (!session) return <div class="boot" />;
   if (!session.authenticated || !session.user) {

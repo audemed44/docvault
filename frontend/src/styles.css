@@ -54,6 +54,14 @@ html {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Settings → Text size. Every size in this file is in rem. */
+html[data-text-size="large"] {
+  font-size: 18px;
+}
+html[data-text-size="larger"] {
+  font-size: 20px;
+}
+
 body {
   margin: 0;
   min-height: 100dvh;
@@ -1679,4 +1687,21 @@ input[type="date"].input {
   .picker-list {
     max-height: calc(8 * 48px);
   }
+}
+.text-sizes {
+  align-self: flex-start;
+  max-width: 100%;
+}
+.text-sizes button {
+  min-height: 52px;
+  color: var(--fg-2);
+}
+.text-size-normal {
+  font-size: 0.9375rem;
+}
+.text-size-large {
+  font-size: 1.0625rem;
+}
+.text-size-larger {
+  font-size: 1.25rem;
 }

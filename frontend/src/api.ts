@@ -8,6 +8,7 @@ import type {
   ImportReport,
   Session,
   Settings,
+  TextSize,
   UploadResponse,
   User,
   VocabTag,
@@ -127,7 +128,8 @@ export const api = {
   setup: (body: { username: string; name: string }) =>
     request<Session>("/api/setup", json("POST", body)),
   logout: () => request<void>("/api/session", { method: "DELETE" }),
-  updateMe: (body: { name: string }) => request<User>("/api/me", json("PUT", body)),
+  updateMe: (body: { name?: string; text_size?: TextSize }) =>
+    request<User>("/api/me", json("PUT", body)),
 
   users: () => request<User[]>("/api/users"),
   saveUser: (u: Partial<User>) =>

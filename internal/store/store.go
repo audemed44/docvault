@@ -132,6 +132,8 @@ var migrations = []string{
 	`ALTER TABLE documents ADD COLUMN read_done INTEGER NOT NULL DEFAULT 0`,
 	// 9: read, but not all of it (a page OCR couldn't read).
 	`ALTER TABLE documents ADD COLUMN warning TEXT NOT NULL DEFAULT ''`,
+	// 10: how big the text is for each person ("", "large" or "larger").
+	`ALTER TABLE users ADD COLUMN text_size TEXT NOT NULL DEFAULT ''`,
 }
 
 // Open opens (or creates) the database.
