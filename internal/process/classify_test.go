@@ -102,7 +102,8 @@ func TestLLMClassify(t *testing.T) {
 		t.Fatal("OpenRouter routing sent to another API")
 	}
 	schemaJSON, _ := json.Marshal(req.ResponseFormat)
-	if !strings.Contains(string(schemaJSON), `"enum":["aadhaar","pan"`) {
+	if !strings.Contains(string(schemaJSON), `"tags":{"items":{"type":"string"},"maxItems":8`) ||
+		strings.Contains(string(schemaJSON), `"aadhaar"`) {
 		t.Fatalf("schema %s", schemaJSON)
 	}
 	if res.Suggestion.Title != "PAN card - Pranav" || strings.Join(res.Suggestion.Tags, ",") != "pan,Pranav" {
@@ -361,5 +362,19 @@ func TestSuggestionOnlyKeepsReading(t *testing.T) {
 	job, _ = st.ClaimJob(ctx)
 	if res := p.read(ctx, job); res.Error == "" {
 		t.Fatal("Run OCR again didn't read the file")
+	}
+}
+
+func TestAPIMessageProvider(t *testing.T) {
+	var r chatResponse
+	json.Unmarshal([]byte(`{"error":{"message":"Provider returned error","code":400,"metadata":{
+		"raw":"{\n \"error\": {\"code\": 400, \"message\": \"Request contains an invalid argument.\"}}\n","provider_name":"Google"}}}`), &r)
+	if got := apiMessage(&r); got != ": Provider returned error (Google: Request contains an invalid argument.)" {
+		t.Fatalf("got %q", got)
+	}
+	var plain chatResponse
+	json.Unmarshal([]byte(`{"error":{"message":"bad request"}}`), &plain)
+	if got := apiMessage(&plain); got != ": bad request" {
+		t.Fatalf("got %q", got)
 	}
 }
