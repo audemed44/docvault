@@ -1,4 +1,24 @@
-import { FileText, Loader, TriangleAlert, Users } from "lucide-preact";
+import {
+  Briefcase,
+  Car,
+  Check,
+  ChevronRight,
+  FileText,
+  Folder,
+  GraduationCap,
+  HeartPulse,
+  House,
+  IdCard,
+  Inbox,
+  Landmark,
+  Loader,
+  Plane,
+  Receipt,
+  Shield,
+  TriangleAlert,
+  Users,
+  type LucideIcon,
+} from "lucide-preact";
 import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
 import { docURL } from "../api";
@@ -168,6 +188,83 @@ export function ResultList(props: { results: IngestResult[] }) {
           </span>
         </div>
       ))}
+    </div>
+  );
+}
+
+const CATEGORY_ICONS: [RegExp, LucideIcon][] = [
+  [/^id|identity/i, IdCard],
+  [/propert|house|home/i, House],
+  [/medic|health/i, HeartPulse],
+  [/insur/i, Shield],
+  [/tax|bill/i, Receipt],
+  [/vehicle|car/i, Car],
+  [/educat|school/i, GraduationCap],
+  [/bank|invest|financ/i, Landmark],
+  [/travel/i, Plane],
+  [/work|job/i, Briefcase],
+];
+
+/** An icon for a category, by its name; the inbox has its own. */
+export function CategoryIcon(props: { name: string; inbox?: boolean; size?: number }) {
+  const Icon = props.inbox
+    ? Inbox
+    : (CATEGORY_ICONS.find(([re]) => re.test(props.name))?.[1] ?? Folder);
+  return <Icon size={props.size ?? 22} aria-hidden="true" />;
+}
+
+/**
+ * Documents as rows: a small page one, a big title, what and when. While
+ * selecting (selected set), a tap selects instead of opening.
+ */
+export function DocRows(props: {
+  docs: Doc[];
+  selected?: Set<number> | null;
+  onToggle?: (id: number) => void;
+  class?: string;
+}) {
+  const { selected } = props;
+  return (
+    <div class={`doc-rows ${props.class ?? ""}`}>
+      {props.docs.map((d) => {
+        const body = (
+          <>
+            {selected && (
+              <span class="select-box" aria-hidden="true">
+                {selected.has(d.id) && <Check size={16} />}
+              </span>
+            )}
+            <DocThumb doc={d} class="thumb-row" />
+            <span class="doc-row-main">
+              <span class="doc-row-title">{d.title}</span>
+              <span class="doc-row-meta">{docMeta(d)}</span>
+              <span class="chips">
+                <StatusChip doc={d} />
+                {d.suggestion && <span class="chip chip-accent">Suggestion</span>}
+                <ExpiryChip expires={d.expires} />
+                <FamilyMark doc={d} />
+              </span>
+              <Snippet text={d.snippet} />
+            </span>
+            {!selected && <ChevronRight size={22} class="doc-row-go" />}
+          </>
+        );
+        return selected ? (
+          <button
+            key={d.id}
+            type="button"
+            class={`doc-row ${selected.has(d.id) ? "selected" : ""}`}
+            aria-pressed={selected.has(d.id)}
+            onClick={() => props.onToggle?.(d.id)}
+          >
+            {body}
+          </button>
+        ) : (
+          <a key={d.id} class="doc-row" href={`/documents/${d.id}`}>
+            {body}
+          </a>
+        );
+      })}
     </div>
   );
 }

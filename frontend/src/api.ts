@@ -67,6 +67,7 @@ export function filterQuery(f: Partial<Filter>, extra: Record<string, string> = 
   if (f.suggested) p.set("suggested", "1");
   if (f.unclassified) p.set("unclassified", "1");
   if (f.warnings) p.set("warnings", "1");
+  if (f.sort) p.set("sort", f.sort);
   for (const [k, v] of Object.entries(extra)) p.set(k, v);
   const s = p.toString();
   return s ? `?${s}` : "";

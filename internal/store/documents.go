@@ -369,8 +369,10 @@ type Filter struct {
 	Suggested, Unclassified bool
 	// Warnings: read, but not all of it.
 	Warnings bool
-	Limit    int
-	Offset   int
+	// Sort "added": newest added first (otherwise by the document's date).
+	Sort   string
+	Limit  int
+	Offset int
 }
 
 // ftsQuery turns what someone typed into an FTS5 query: every word must
@@ -441,6 +443,9 @@ func searchWhere(userID int64, f Filter) (where []string, args []any, join, orde
 	}
 	if f.Warnings {
 		where = append(where, "d.warning != ''")
+	}
+	if f.Sort == "added" {
+		order = "d.created DESC, d.id DESC"
 	}
 	return where, args, join, order, snippet
 }

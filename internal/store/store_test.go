@@ -335,3 +335,22 @@ func TestWarning(t *testing.T) {
 		t.Fatalf("warning kept %+v", got)
 	}
 }
+
+func TestSortByAdded(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+	me := addUser(t, s, "me")
+	addDoc(t, s, me, false, "Passport", "a", "passport")
+	// An old document added last: last by its date, first by when it came in.
+	old := addDoc(t, s, me, false, "School certificate", "d", "class X")
+	old.DocDate = "2001-03-01"
+	if err := s.UpdateDocument(ctx, me.ID, old); err != nil {
+		t.Fatal(err)
+	}
+	if docs, _, _ := s.Search(ctx, me.ID, Filter{}); docs[len(docs)-1].ID != old.ID {
+		t.Fatalf("by date: %+v", docs)
+	}
+	if docs, _, _ := s.Search(ctx, me.ID, Filter{Sort: "added"}); docs[0].ID != old.ID {
+		t.Fatalf("newest added first: %+v", docs)
+	}
+}
