@@ -4,16 +4,9 @@ import { api } from "../api";
 import { useData } from "../hooks";
 import { bytes, plural } from "../lib";
 import type { Doc, Facets, Filter, User } from "../types";
-import {
-  CategorySelect,
-  DocThumb,
-  docMeta,
-  ExpiryChip,
-  FamilyMark,
-  Snippet,
-  StatusChip,
-} from "./docs";
+import { DocThumb, docMeta, ExpiryChip, FamilyMark, Snippet, StatusChip } from "./docs";
 import { Empty, ErrorNote, Figure, useAction } from "./ui";
+import { Picker } from "./Picker";
 import { UploadDialog } from "./UploadDialog";
 
 const EMPTY: Filter = {
@@ -21,6 +14,7 @@ const EMPTY: Filter = {
   space: "",
   category: "",
   tag: "",
+  person: "",
   year: "",
   expiring: false,
   status: "",
@@ -289,42 +283,39 @@ function Filters(props: { facets: Facets | null; filter: Filter; onChange: (f: F
           </button>
         ))}
       </div>
-      <CategorySelect
+      <Picker
+        label="Category"
         value={filter.category}
-        categories={
-          f?.categories.filter((c) => c.count > 0 || String(c.id) === filter.category) ?? []
-        }
+        options={[
+          { value: "", label: "All categories" },
+          { value: "none", label: "Inbox", count: f?.inbox },
+          ...(f?.categories ?? [])
+            .filter((c) => c.count > 0 || String(c.id) === filter.category)
+            .map((c) => ({ value: String(c.id), label: c.name, count: c.count })),
+        ]}
         onChange={(category) => set({ category })}
-        any="All categories"
-        inbox={`Inbox${f ? ` (${f.inbox})` : ""}`}
       />
       {!!f?.tags.length && (
-        <select
-          class="input select"
+        <Picker
+          label="Tags"
           value={filter.tag}
-          onChange={(e) => set({ tag: e.currentTarget.value })}
-        >
-          <option value="">All tags</option>
-          {f.tags.map((t) => (
-            <option key={t.name} value={t.name}>
-              {t.name} ({t.count})
-            </option>
-          ))}
-        </select>
+          options={[
+            { value: "", label: "All tags" },
+            ...f.tags.map((t) => ({ value: t.name, label: t.name, count: t.count })),
+          ]}
+          onChange={(tag) => set({ tag })}
+        />
       )}
       {!!f && f.years.length > 1 && (
-        <select
-          class="input select"
+        <Picker
+          label="Year"
           value={filter.year}
-          onChange={(e) => set({ year: e.currentTarget.value })}
-        >
-          <option value="">Any year</option>
-          {f.years.map((y) => (
-            <option key={y.name} value={y.name}>
-              {y.name} ({y.count})
-            </option>
-          ))}
-        </select>
+          options={[
+            { value: "", label: "Any year" },
+            ...f.years.map((y) => ({ value: y.name, label: y.name, count: y.count })),
+          ]}
+          onChange={(year) => set({ year })}
+        />
       )}
       {filter.expiring && (
         <button class="chip chip-warn chip-button" onClick={() => set({ expiring: false })}>

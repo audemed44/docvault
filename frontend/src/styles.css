@@ -1540,3 +1540,139 @@ input[type="date"].input {
     font-size: 16px;
   }
 }
+
+/* Picker: a filter dropdown that can be searched */
+.picker {
+  position: relative;
+  max-width: 100%;
+}
+.picker-button {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  cursor: pointer;
+  text-align: left;
+}
+.filters .picker-button {
+  height: 38px;
+  font-size: 13px;
+}
+.picker-set {
+  border-color: rgb(var(--accent-rgb) / 0.7);
+}
+.picker-value {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.picker-count {
+  color: var(--fg-3);
+  font-variant-numeric: tabular-nums;
+}
+.picker-menu {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: max(100%, 220px);
+  max-width: calc(100vw - 32px);
+  background: var(--raised);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  animation: picker-in 0.14s var(--ease);
+}
+.picker-menu-right {
+  left: auto;
+  right: 0;
+}
+@keyframes picker-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+.picker-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--line);
+  color: var(--fg-3);
+}
+.picker-search input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  background: none;
+  border: 0;
+  outline: none;
+  color: var(--fg);
+  font: inherit;
+  font-size: 14px;
+}
+.picker-list {
+  /* MENU_ROWS rows, then it scrolls */
+  max-height: calc(8 * 36px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.picker-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 36px;
+  padding: 0 12px;
+  background: none;
+  border: 0;
+  color: var(--fg-2);
+  font: inherit;
+  font-size: 13.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.picker-option.active {
+  background: var(--panel-hover);
+  color: var(--fg);
+}
+.picker-option.selected {
+  color: var(--fg);
+}
+.picker-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.picker-check {
+  color: var(--accent-hi);
+}
+.picker-empty {
+  padding: 10px 12px;
+  color: var(--fg-3);
+  font-size: 13px;
+}
+@media (max-width: 760px) {
+  .filters .picker {
+    flex: 1 1 140px;
+  }
+  .filters .picker-button {
+    width: 100%;
+  }
+}
+@media (max-width: 560px) {
+  .filters .picker-button,
+  .picker-search input,
+  .picker-option {
+    font-size: 16px;
+  }
+  .picker-option {
+    height: 42px;
+  }
+  .picker-list {
+    max-height: calc(8 * 42px);
+  }
+}
