@@ -1705,3 +1705,133 @@ input[type="date"].input {
 .text-size-larger {
   font-size: 1.25rem;
 }
+
+/* Add a document */
+.add-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 560px;
+}
+.add-choice {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-height: 96px;
+  padding: 16px 20px;
+  border: 2px solid var(--line);
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+.add-choice:hover,
+.add-choice:focus-within {
+  border-color: var(--accent);
+}
+.add-choice svg {
+  flex: none;
+  color: var(--accent-hi);
+}
+.add-choice-title {
+  display: block;
+  font-size: 1.375rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.add-choice-sub {
+  display: block;
+  color: var(--fg-3);
+}
+/* A computer has no camera to take the photo with. */
+@media (hover: hover) and (pointer: fine) {
+  .add-camera {
+    display: none;
+  }
+}
+.add-drop-hint {
+  margin-top: -28px;
+}
+@media (pointer: coarse) {
+  .add-drop-hint {
+    display: none;
+  }
+}
+.add-import {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  min-height: 44px;
+  color: var(--accent-hi);
+  font-weight: 600;
+}
+.add-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 560px;
+}
+.add-progress-text {
+  font-size: 1.375rem;
+  font-weight: 700;
+}
+.add-progress .progress {
+  height: 10px;
+}
+.add-saved {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 640px;
+  padding: 16px 20px;
+  border: 2px solid var(--good);
+  font-size: 1.0625rem;
+}
+.add-saved-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1.375rem;
+  font-weight: 800;
+  color: var(--good);
+}
+.add-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+@media (max-width: 560px) {
+  .add-buttons .btn {
+    flex: 1 1 100%;
+  }
+}
+
+/* Only me or the family */
+.space-toggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  max-width: 420px;
+  border: 2px solid var(--line);
+}
+.space-toggle button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 60px;
+  padding: 6px 10px;
+  font-size: 1.0625rem;
+  font-weight: 700;
+  color: var(--fg-2);
+}
+.space-toggle small {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--fg-3);
+}
+.space-toggle button.active {
+  background: var(--accent);
+  color: #fff;
+}
+.space-toggle button.active small {
+  color: rgb(255 255 255 / 0.85);
+}

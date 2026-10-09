@@ -1,6 +1,7 @@
 import { ArrowLeft, LogOut } from "lucide-preact";
 import { useEffect, useState } from "preact/hooks";
 import { api, setUnauthorizedHandler } from "./api";
+import { AddPage } from "./components/AddPage";
 import { DocumentPage } from "./components/DocumentPage";
 import { ImportPage } from "./components/ImportPage";
 import { LibraryPage } from "./components/LibraryPage";
@@ -50,6 +51,7 @@ export function App() {
 
 const NAV: { page: Route["page"]; href: string; label: string }[] = [
   { page: "home", href: "/", label: "Library" },
+  { page: "add", href: "/add", label: "Add" },
   { page: "import", href: "/import", label: "Import" },
   { page: "settings", href: "/settings", label: "Settings" },
 ];
@@ -100,6 +102,7 @@ function Shell(props: {
       <main>
         {route.page === "home" && <LibraryPage user={user} />}
         {route.page === "document" && <DocumentPage key={route.id} id={route.id} user={user} />}
+        {route.page === "add" && <AddPage user={user} />}
         {route.page === "import" && <ImportPage user={user} />}
         {route.page === "settings" && <SettingsPage user={user} onUser={props.onUser} />}
       </main>

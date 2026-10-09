@@ -13,9 +13,8 @@ import { useData, useUnsavedWarning } from "../hooks";
 import { ago, bytes, expiryText, formatDate, langName, plural } from "../lib";
 import { navigate } from "../router";
 import type { Category, Doc, Settings, User } from "../types";
-import { CategorySelect, DocThumb } from "./docs";
+import { CategorySelect, DocThumb, SpaceToggle } from "./docs";
 import { ErrorNote, Field, SectionHead, useAction } from "./ui";
-import { SpaceToggle } from "./UploadDialog";
 
 export function DocumentPage(props: { id: number; user: User }) {
   const doc = useData(() => api.document(props.id), 0, [props.id]);
