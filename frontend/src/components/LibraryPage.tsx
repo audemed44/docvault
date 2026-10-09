@@ -2,12 +2,13 @@ import { ArrowLeft, ChevronRight, Plus, Search, Sparkles, TriangleAlert, X } fro
 import { useEffect, useState } from "preact/hooks";
 import { api } from "../api";
 import { useData } from "../hooks";
-import { bytes, daysUntil, expiryText, formatDate, plural } from "../lib";
+import { bytes, categoryColor, daysUntil, expiryText, formatDate, plural } from "../lib";
 import { navigate } from "../router";
 import type { Doc, Facets, Filter, User } from "../types";
 import { addFiles } from "./AddPage";
 import {
   CategoryIcon,
+  CategoryTag,
   DocRows,
   DocThumb,
   ExpiryChip,
@@ -261,6 +262,7 @@ function TypeTiles(props: { facets: Facets }) {
             <button
               key={c.id}
               class="tile"
+              style={{ "--cat": categoryColor(c.name) }}
               onClick={() => showDocuments({ category: String(c.id) })}
             >
               <CategoryIcon name={c.name} />
@@ -269,7 +271,11 @@ function TypeTiles(props: { facets: Facets }) {
             </button>
           ))}
         {f.inbox > 0 && (
-          <button class="tile" onClick={() => showDocuments({ category: "none" })}>
+          <button
+            class="tile"
+            style={{ "--cat": categoryColor("") }}
+            onClick={() => showDocuments({ category: "none" })}
+          >
             <CategoryIcon name="" inbox />
             <span class="tile-name">Not sorted yet</span>
             <span class="tile-count">{plural(f.inbox, "document")}</span>
@@ -774,7 +780,9 @@ function DocTable(props: Selectable) {
                   <Snippet text={d.snippet} />
                 </div>
               </td>
-              <td>{d.category || <span class="muted">Inbox</span>}</td>
+              <td>
+                <CategoryTag name={d.category} />
+              </td>
               <td class="mono">{d.doc_date}</td>
               <td class="tags-cell">{d.tags.join(", ")}</td>
               <td class="num mono">{d.pages || ""}</td>

@@ -14,6 +14,7 @@ import {
   Loader,
   Plane,
   Receipt,
+  ReceiptText,
   Shield,
   TriangleAlert,
   Users,
@@ -22,7 +23,7 @@ import {
 import type { ComponentChildren } from "preact";
 import { useState } from "preact/hooks";
 import { docURL } from "../api";
-import { expiryText, formatDate, snippetParts } from "../lib";
+import { categoryColor, expiryText, formatDate, snippetParts } from "../lib";
 import type { Category, Doc, IngestResult } from "../types";
 
 /** Page one of a document, or a stand-in while it's processed. */
@@ -72,11 +73,6 @@ export function ExpiryChip(props: { expires: string }) {
   const e = expiryText(props.expires);
   if (!e.tone) return null;
   return <span class={`chip chip-${e.tone}`}>{e.text}</span>;
-}
-
-/** Category (or Inbox), date and space, in one line. */
-export function docMeta(d: Doc): string {
-  return [d.category || "Inbox", formatDate(d.doc_date)].join(" · ");
 }
 
 export function FamilyMark(props: { doc: Doc }) {
@@ -193,12 +189,13 @@ export function ResultList(props: { results: IngestResult[] }) {
 }
 
 const CATEGORY_ICONS: [RegExp, LucideIcon][] = [
-  [/^id|identity/i, IdCard],
+  [/^id\b|identity/i, IdCard],
   [/propert|house|home/i, House],
   [/medic|health/i, HeartPulse],
   [/insur/i, Shield],
-  [/tax|bill/i, Receipt],
-  [/vehicle|car/i, Car],
+  [/tax/i, Receipt],
+  [/bill/i, ReceiptText],
+  [/vehicle|car\b/i, Car],
   [/educat|school/i, GraduationCap],
   [/bank|invest|financ/i, Landmark],
   [/travel/i, Plane],
@@ -211,6 +208,16 @@ export function CategoryIcon(props: { name: string; inbox?: boolean; size?: numb
     ? Inbox
     : (CATEGORY_ICONS.find(([re]) => re.test(props.name))?.[1] ?? Folder);
   return <Icon size={props.size ?? 22} aria-hidden="true" />;
+}
+
+/** The category (or Not sorted yet) in its own colour, with its icon. */
+export function CategoryTag(props: { name: string; class?: string }) {
+  return (
+    <span class={`cat-tag ${props.class ?? ""}`} style={{ "--cat": categoryColor(props.name) }}>
+      <CategoryIcon name={props.name} inbox={!props.name} size={15} />
+      {props.name || "Not sorted yet"}
+    </span>
+  );
 }
 
 /**
@@ -237,7 +244,10 @@ export function DocRows(props: {
             <DocThumb doc={d} class="thumb-row" />
             <span class="doc-row-main">
               <span class="doc-row-title">{d.title}</span>
-              <span class="doc-row-meta">{docMeta(d)}</span>
+              <span class="doc-row-meta">
+                <CategoryTag name={d.category} />
+                {d.doc_date && <span>{formatDate(d.doc_date)}</span>}
+              </span>
               <span class="chips">
                 <StatusChip doc={d} />
                 {d.suggestion && <span class="chip chip-accent">Suggestion</span>}

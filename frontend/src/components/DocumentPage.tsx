@@ -16,7 +16,7 @@ import { useData, useUnsavedWarning } from "../hooks";
 import { ago, bytes, expiryText, formatDate, langName, plural } from "../lib";
 import { goBack, navigate } from "../router";
 import type { Category, Doc, Settings, User } from "../types";
-import { CategorySelect, DocThumb, SpaceToggle } from "./docs";
+import { CategorySelect, CategoryTag, DocThumb, SpaceToggle } from "./docs";
 import { Disclosure, ErrorNote, Field, useAction } from "./ui";
 
 /**
@@ -154,7 +154,9 @@ function Facts(props: { doc: Doc }) {
     <dl class="facts">
       <div>
         <dt>Type</dt>
-        <dd>{d.category || "Not sorted yet"}</dd>
+        <dd>
+          <CategoryTag name={d.category} class="cat-tag-big" />
+        </dd>
       </div>
       {d.doc_date && (
         <div>

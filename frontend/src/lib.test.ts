@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { filterQuery } from "./api";
-import { ago, daysUntil, expiryText, formatDate, langName, plural, snippetParts } from "./lib";
+import {
+  ago,
+  categoryColor,
+  INBOX_COLOR,
+  daysUntil,
+  expiryText,
+  formatDate,
+  langName,
+  plural,
+  snippetParts,
+} from "./lib";
 import { parseRoute } from "./router";
 
 describe("format", () => {
@@ -51,5 +61,30 @@ describe("router", () => {
     expect(parseRoute("/import")).toEqual({ page: "import" });
     expect(parseRoute("/settings")).toEqual({ page: "settings" });
     expect(parseRoute("/nope")).toEqual({ page: "home" });
+  });
+});
+
+describe("categoryColor", () => {
+  it("gives the usual categories their own colours", () => {
+    const names = [
+      "ID",
+      "Property",
+      "Medical",
+      "Insurance",
+      "Tax",
+      "Bills",
+      "Vehicle",
+      "Education",
+      "Banking & Investments",
+      "Travel",
+      "Work",
+      "Other",
+    ];
+    expect(new Set(names.map(categoryColor)).size).toBe(names.length);
+  });
+  it("keeps the inbox grey and picks a steady colour for others", () => {
+    expect(categoryColor("")).toBe(INBOX_COLOR);
+    expect(categoryColor("Pets")).toBe(categoryColor("pets"));
+    expect(categoryColor("Pets")).toMatch(/^#[0-9a-f]{6}$/);
   });
 });
