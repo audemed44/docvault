@@ -18,6 +18,7 @@ import (
 
 func TestSanitize(t *testing.T) {
 	in := Input{
+		Title:      "[person:1] PAN",
 		Categories: []CategoryTags{{Name: "ID", Tags: []string{"pan"}}, {Name: "Medical"}},
 		Tags:       []string{"pan", "lab-report", "[person:1]"},
 	}
@@ -30,6 +31,30 @@ func TestSanitize(t *testing.T) {
 	}
 	if sg := Sanitize(store.Suggest{Title: "Policy [number]", Category: "Recipes"}, in, people); sg != nil {
 		t.Fatalf("kept %+v", sg)
+	}
+}
+
+func TestSanitizeGuessedPeople(t *testing.T) {
+	in := Input{Title: "Ex Service Man Card", Text: "issued to [person:2]", Categories: []CategoryTags{{Name: "ID"}},
+		Tags: []string{"[person:1]", "[person:2]"}}
+	people := []mask.Person{{Name: "Aakash"}, {Name: "Pranav"}}
+	for title, want := range map[string]string{
+		"Ex-Serviceman card - [person:1]":              "Ex-Serviceman card",
+		"[person:1]'s ex-serviceman card":              "ex-serviceman card",
+		"Ex-Serviceman card for [person:1]":            "Ex-Serviceman card",
+		"Ex-Serviceman card - [person:2]":              "Ex-Serviceman card - Pranav",
+		"Ex-Serviceman card - [person:1] - [person:2]": "Ex-Serviceman card - Pranav",
+	} {
+		sg := Sanitize(store.Suggest{Title: title, Tags: []string{"[person:1]", "[person:2]"}}, in, people)
+		if sg.Title != want || strings.Join(sg.Tags, ",") != "Pranav" {
+			t.Errorf("%q: %+v", title, sg)
+		}
+	}
+	// Only a guess: nothing left of the person.
+	in.Text = "no one named"
+	sg := Sanitize(store.Suggest{Title: "Ex-Serviceman card - [person:2]", Tags: []string{"[person:2]"}}, in, people)
+	if sg.Title != "Ex-Serviceman card" || len(sg.Tags) != 0 {
+		t.Fatalf("%+v", sg)
 	}
 }
 
