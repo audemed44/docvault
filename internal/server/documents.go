@@ -420,9 +420,6 @@ func (s *Server) applySuggestion(w http.ResponseWriter, r *http.Request) {
 // category, and its tags added to the document's.
 func (s *Server) suggest(d *store.Document) {
 	sg := d.Suggestion
-	if sg.Title != "" {
-		d.Title = sg.Title
-	}
 	if sg.DocDate != "" {
 		d.DocDate = sg.DocDate
 	}

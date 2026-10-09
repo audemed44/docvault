@@ -169,10 +169,10 @@ export function MaskingSection(props: {
         {c ? (
           <>
             Each document's name (and its text, as set below) is masked, then sent to the model,
-            which suggests a title, category, tags and dates to apply. ID numbers, phone numbers,
-            emails, long numbers, labelled names, addresses and birth dates, and the people and
-            words below are replaced with placeholders like <code>[pan]</code> first. Unlabelled
-            names and addresses, and what the document is about, still go through.
+            which suggests a category, tags and dates to apply (never a new title). ID numbers,
+            phone numbers, emails, long numbers, labelled names, addresses and birth dates, and the
+            people and words below are replaced with placeholders like <code>[pan]</code> first.
+            Unlabelled names and addresses, and what the document is about, still go through.
           </>
         ) : (
           <>

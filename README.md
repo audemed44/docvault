@@ -24,7 +24,7 @@ binary with the web UI built in, data in SQLite, files on disk.
 - **Duplicates** (same contents, same space) are skipped, so imports can
   run again.
 - **Suggestions (optional)**: a chat model (OpenRouter, or a local one)
-  suggests a title, category, tags and dates from the text, which is
+  suggests a category, tags and dates from the text, which is
   **masked first**; see below.
 
 ## Run it

@@ -399,7 +399,7 @@ function SuggestionBar(props: {
               run(async () => {
                 if (
                   !confirm(
-                    "Apply every suggestion in this list? Titles, categories, dates and tags change.",
+                    "Apply every suggestion in this list? Categories, dates and tags change; titles stay.",
                   )
                 ) {
                   return;

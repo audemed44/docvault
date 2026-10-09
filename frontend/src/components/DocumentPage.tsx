@@ -146,7 +146,6 @@ function SuggestionNote(props: { doc: Doc; onDone: (d: Doc) => void }) {
   const s = doc.suggestion!;
   const { busy, error, run } = useAction();
   const rows: [string, string][] = [];
-  if (s.title && s.title !== doc.title) rows.push(["Title", s.title]);
   if (s.category && s.category !== doc.category) rows.push(["Category", s.category]);
   if (s.tags?.length) rows.push(["Tags", s.tags.join(", ")]);
   if (s.new_tags?.length)
