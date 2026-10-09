@@ -71,3 +71,32 @@ export function langName(spec: string): string {
     .map((l) => LANGS[l] ?? l)
     .join(" + ");
 }
+
+/**
+ * Each category's colour, bright enough to read on black: the usual ones
+ * by name, any other picked from the same set by its name.
+ */
+const CATEGORY_COLORS: [RegExp, string][] = [
+  [/^id\b|identity/i, "#60a5fa"],
+  [/propert|house|home/i, "#fb923c"],
+  [/medic|health/i, "#f472b6"],
+  [/insur/i, "#2dd4bf"],
+  [/tax/i, "#a3e635"],
+  [/bill/i, "#4ade80"],
+  [/vehicle|car\b/i, "#22d3ee"],
+  [/educat|school/i, "#fde047"],
+  [/bank|invest|financ/i, "#a78bfa"],
+  [/travel/i, "#e879f9"],
+  [/work|job/i, "#fca5a5"],
+  [/^other/i, "#d4d4d8"],
+];
+export const INBOX_COLOR = "#a1a1aa";
+
+export function categoryColor(name: string): string {
+  if (!name) return INBOX_COLOR;
+  const known = CATEGORY_COLORS.find(([re]) => re.test(name));
+  if (known) return known[1];
+  let h = 0;
+  for (const c of name.toLowerCase()) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return CATEGORY_COLORS[h % (CATEGORY_COLORS.length - 1)][1];
+}

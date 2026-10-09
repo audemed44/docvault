@@ -2071,7 +2071,10 @@ input[type="date"].input {
 }
 .tile svg {
   grid-row: span 2;
-  color: var(--accent-hi);
+  color: var(--cat, var(--accent-hi));
+}
+.tile[style] {
+  border-left: 4px solid var(--cat);
 }
 .tile-name {
   font-size: 1.125rem;
@@ -2180,4 +2183,33 @@ input[type="date"].input {
   .library-add {
     display: none;
   }
+}
+
+/* A category in its own colour */
+.cat-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 2px 8px;
+  background: color-mix(in srgb, var(--cat) 16%, transparent);
+  color: var(--cat);
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cat-tag svg {
+  flex: none;
+}
+.cat-tag-big {
+  padding: 4px 10px;
+  font-size: 1.0625rem;
+}
+.doc-row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
 }

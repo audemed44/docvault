@@ -67,8 +67,11 @@ originals in `/data/files/<id>/`, derived files in `/data/cache/<id>/`.
   only: the family uses Docvault, not the rest of the homelab.
 - UI style is Foyer's: Swiss editorial, always dark (no light theme), heavy
   Inter headlines, tracked uppercase eyebrows, 2px rules over numbered
-  headings, square corners, one accent (#2563ff). Check phone width too
-  (390px): it's used from an iPhone.
+  headings, square corners, one accent (#2563ff); the exception is each
+  category's own colour (`categoryColor` in `lib.ts`). Check phone width
+  too (390px): it's used from an iPhone. The family using it are older, so
+  keep body text at 16px or more (nothing under 13px), controls at 44px
+  or more, and words plain.
 
 ## Commits
 
