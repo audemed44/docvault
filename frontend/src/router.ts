@@ -2,7 +2,8 @@ import { useEffect, useState } from "preact/hooks";
 
 /**
  * Path routes (the server answers every non-API path with the app):
- *   /                    the library: search, filters, documents
+ *   /                    home: search, what's expiring, categories, the latest
+ *   /documents           every document, with filters
  *   /documents/:id       one document
  *   /add                 add a document: take a photo or choose files
  *   /import              bulk import (a folder from this computer, or the server's import folder)
@@ -10,6 +11,7 @@ import { useEffect, useState } from "preact/hooks";
  */
 export type Route =
   | { page: "home" }
+  | { page: "list" }
   | { page: "document"; id: number }
   | { page: "add" }
   | { page: "import" }
@@ -19,6 +21,7 @@ export function parseRoute(path: string): Route {
   const parts = path.split("/").filter(Boolean);
   switch (parts[0]) {
     case "documents": {
+      if (parts.length === 1) return { page: "list" };
       const id = Number(parts[1]);
       if (Number.isInteger(id) && id > 0) return { page: "document", id };
       break;

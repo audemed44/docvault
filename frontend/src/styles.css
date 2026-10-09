@@ -312,6 +312,127 @@ pre {
   color: var(--fg);
   border-bottom-color: var(--accent);
 }
+
+/* The person's name, opening to Sign out. */
+.account {
+  position: relative;
+}
+.account-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 44px;
+  max-width: 180px;
+  padding: 0 12px 0 14px;
+  border: 1px solid var(--line);
+  font-weight: 600;
+  color: var(--fg-2);
+}
+.account-btn:hover,
+.account-btn[aria-expanded="true"] {
+  color: var(--fg);
+  border-color: var(--fg);
+}
+.account-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.account-menu {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 6px);
+  right: 0;
+  width: max-content;
+  min-width: 240px;
+  background: var(--raised);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  animation: picker-in 0.14s var(--ease);
+}
+.account-who {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+  color: var(--fg-3);
+}
+.account-who strong {
+  color: var(--fg);
+}
+.account-menu a,
+.account-menu button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 52px;
+  padding: 0 16px;
+  font-weight: 600;
+  text-align: left;
+}
+.account-menu a:hover,
+.account-menu button:hover {
+  background: var(--panel-hover);
+}
+.account-menu button {
+  color: var(--bad);
+  border-top: 1px solid var(--line-soft);
+}
+
+/* Phones: the pages along the bottom, in thumb's reach. */
+.tabbar {
+  display: none;
+}
+@media (max-width: 760px) {
+  .topnav {
+    display: none;
+  }
+  .shell {
+    padding-bottom: calc(112px + env(safe-area-inset-bottom));
+  }
+  .tabbar {
+    position: fixed;
+    z-index: 20;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    padding-bottom: env(safe-area-inset-bottom);
+    background: rgb(0 0 0 / 0.94);
+    border-top: 1px solid var(--line);
+    backdrop-filter: blur(10px);
+  }
+  .tabbar a {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    min-height: 72px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--fg-3);
+  }
+  .tabbar a.active {
+    color: var(--fg);
+  }
+  .tabbar a.active svg {
+    color: var(--accent-hi);
+  }
+  .tab-icon {
+    display: grid;
+    place-items: center;
+    height: 36px;
+  }
+  .tab-add-icon {
+    width: 56px;
+    background: var(--accent);
+    color: #fff;
+  }
+  .tabbar a.tab-add.active svg {
+    color: #fff;
+  }
+}
 /* Back to Foyer, the homelab's start page. */
 .home-link {
   display: flex;
@@ -1372,15 +1493,10 @@ input[type="date"].input {
 
 @media (max-width: 560px) {
   .topbar {
-    flex-wrap: wrap;
-    row-gap: 14px;
-    margin-bottom: 36px;
+    margin-bottom: 28px;
   }
-  .topnav {
-    order: 3;
-    width: 100%;
-    justify-content: space-between;
-    border-bottom: 1px solid var(--line-soft);
+  .brand {
+    font-size: 1.25rem;
   }
   /* Two to a row: four across leaves no room for a four-digit count. */
   .figures {

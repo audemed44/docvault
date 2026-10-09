@@ -28,7 +28,7 @@ let lastFilter: Filter = EMPTY;
 
 const PAGE = 60;
 
-export function LibraryPage(props: { user: User }) {
+export function LibraryPage(props: { user: User; browse?: boolean }) {
   const [filter, setFilterState] = useState<Filter>(lastFilter);
   const [query, setQuery] = useState(filter.q);
   const [more, setMore] = useState<Doc[]>([]);

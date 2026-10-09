@@ -1,5 +1,12 @@
-import { ArrowLeft, LogOut } from "lucide-preact";
-import { useEffect, useState } from "preact/hooks";
+import {
+  ArrowLeft,
+  ChevronDown,
+  Files,
+  LogOut,
+  Plus,
+  Settings as SettingsIcon,
+} from "lucide-preact";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { api, setUnauthorizedHandler } from "./api";
 import { AddPage } from "./components/AddPage";
 import { DocumentPage } from "./components/DocumentPage";
@@ -49,10 +56,10 @@ export function App() {
   );
 }
 
-const NAV: { page: Route["page"]; href: string; label: string }[] = [
-  { page: "home", href: "/", label: "Library" },
+const NAV: { page: Route["page"]; href: string; label: string; admin?: boolean }[] = [
+  { page: "home", href: "/", label: "Documents" },
   { page: "add", href: "/add", label: "Add" },
-  { page: "import", href: "/import", label: "Import" },
+  { page: "import", href: "/import", label: "Import", admin: true },
   { page: "settings", href: "/settings", label: "Settings" },
 ];
 
@@ -68,7 +75,7 @@ function Shell(props: {
     await api.logout().catch(() => {});
     props.onSignOut();
   };
-  const active = route.page === "document" ? "home" : route.page;
+  const active = route.page === "document" || route.page === "list" ? "home" : route.page;
   return (
     <div class="shell" onClick={onLinkClick}>
       <header class="topbar">
@@ -84,28 +91,88 @@ function Shell(props: {
         </a>
         <span class="spacer" />
         <nav class="topnav" aria-label="Pages">
-          {NAV.map((n) => (
+          {NAV.filter((n) => !n.admin || user.admin).map((n) => (
             <a key={n.page} class={active === n.page ? "active" : ""} href={n.href}>
               {n.label}
             </a>
           ))}
         </nav>
-        <button
-          class="icon-btn"
-          onClick={signOut}
-          title={`Sign out ${user.name}`}
-          aria-label="Sign out"
-        >
-          <LogOut size={16} />
-        </button>
+        <AccountMenu user={user} onSignOut={signOut} />
       </header>
       <main>
-        {route.page === "home" && <LibraryPage user={user} />}
+        {(route.page === "home" || route.page === "list") && (
+          <LibraryPage user={user} browse={route.page === "list"} />
+        )}
         {route.page === "document" && <DocumentPage key={route.id} id={route.id} user={user} />}
         {route.page === "add" && <AddPage user={user} />}
         {route.page === "import" && <ImportPage user={user} />}
         {route.page === "settings" && <SettingsPage user={user} onUser={props.onUser} />}
       </main>
+      <nav class="tabbar" aria-label="Pages">
+        <a class={active === "home" ? "active" : ""} href="/">
+          <span class="tab-icon">
+            <Files size={24} />
+          </span>
+          Documents
+        </a>
+        <a class={`tab-add ${active === "add" ? "active" : ""}`} href="/add">
+          <span class="tab-icon tab-add-icon">
+            <Plus size={26} />
+          </span>
+          Add
+        </a>
+        <a class={active === "settings" ? "active" : ""} href="/settings">
+          <span class="tab-icon">
+            <SettingsIcon size={24} />
+          </span>
+          Settings
+        </a>
+      </nav>
+    </div>
+  );
+}
+
+/** The person's name; opens to text size and Sign out. */
+function AccountMenu(props: { user: User; onSignOut: () => void }) {
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: Event) => {
+      if (!root.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("pointerdown", away);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("pointerdown", away);
+      document.removeEventListener("keydown", esc);
+    };
+  }, [open]);
+  return (
+    <div class="account" ref={root}>
+      <button
+        class="account-btn"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        onClick={() => setOpen(!open)}
+      >
+        <span class="account-name">{props.user.name}</span>
+        <ChevronDown size={16} />
+      </button>
+      {open && (
+        <div class="account-menu" role="menu">
+          <div class="account-who">
+            Signed in as <strong>{props.user.name}</strong>
+          </div>
+          <a role="menuitem" href="/settings" onClick={() => setOpen(false)}>
+            <SettingsIcon size={18} /> Text size and settings
+          </a>
+          <button role="menuitem" onClick={props.onSignOut}>
+            <LogOut size={18} /> Sign out
+          </button>
+        </div>
+      )}
     </div>
   );
 }
