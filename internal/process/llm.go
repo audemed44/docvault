@@ -92,10 +92,9 @@ func schema(in Input) map[string]any {
 			cats = append(cats, c.Name)
 		}
 	}
-	tags := map[string]any{"type": "string"}
-	if len(in.Tags) > 0 {
-		tags["enum"] = in.Tags
-	}
+	// Tags stay free strings: the list is in the prompt, Sanitize drops the
+	// rest, and Gemini refuses a schema listing ~100 of them (INVALID_ARGUMENT).
+	// The caps keep a model from listing every tag until it runs out of tokens.
 	str := map[string]any{"type": "string"}
 	return map[string]any{
 		"type":                 "object",
@@ -104,8 +103,8 @@ func schema(in Input) map[string]any {
 		"properties": map[string]any{
 			"title":    str,
 			"category": map[string]any{"type": "string", "enum": cats},
-			"tags":     map[string]any{"type": "array", "items": tags},
-			"new_tags": map[string]any{"type": "array", "items": str},
+			"tags":     map[string]any{"type": "array", "items": str, "maxItems": 8},
+			"new_tags": map[string]any{"type": "array", "items": str, "maxItems": 2},
 			"doc_date": str,
 			"expires":  str,
 		},
@@ -138,6 +137,11 @@ type chatResponse struct {
 	} `json:"usage"`
 	Error *struct {
 		Message string `json:"message"`
+		// Metadata is where OpenRouter puts the provider's own answer.
+		Metadata struct {
+			Raw          string `json:"raw"`
+			ProviderName string `json:"provider_name"`
+		} `json:"metadata"`
 	} `json:"error"`
 }
 
@@ -231,10 +235,25 @@ func (l *LLM) post(ctx context.Context, body []byte) (*chatResponse, time.Durati
 }
 
 func apiMessage(r *chatResponse) string {
-	if r.Error != nil && r.Error.Message != "" {
-		return ": " + r.Error.Message
+	if r.Error == nil || r.Error.Message == "" {
+		return ""
 	}
-	return ""
+	msg := ": " + r.Error.Message
+	if raw := strings.TrimSpace(r.Error.Metadata.Raw); raw != "" {
+		var inner struct {
+			Error struct {
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		if json.Unmarshal([]byte(raw), &inner) == nil && inner.Error.Message != "" {
+			raw = inner.Error.Message
+		}
+		if len(raw) > 300 {
+			raw = strings.ToValidUTF8(raw[:300], "")
+		}
+		msg += " (" + strings.TrimSpace(r.Error.Metadata.ProviderName+": "+raw) + ")"
+	}
+	return msg
 }
 
 // jsonPart takes the JSON object out of an answer that may wrap it in a
