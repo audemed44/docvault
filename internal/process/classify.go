@@ -137,12 +137,34 @@ func Descriptive(title string) bool {
 	return n >= 3
 }
 
+var (
+	personRe = regexp.MustCompile(`^\[person:\d+\]$`)
+	// A person in a title with what joins them to it: "Aadhaar card -
+	// [person:1]", "[person:1]'s PAN card", "Letter for [person:2]".
+	titlePersonRe = regexp.MustCompile(`(?i)(\s*(?:[-–—,:]|\bof\b|\bfor\b|\bto\b))?\s*(\[person:\d+\])(?:'s\b)?`)
+)
+
+// dropPeople takes the people drop says so out of a title.
+func dropPeople(title string, drop func(string) bool) string {
+	out := titlePersonRe.ReplaceAllStringFunc(title, func(m string) string {
+		if drop(titlePersonRe.FindStringSubmatch(m)[2]) {
+			return ""
+		}
+		return m
+	})
+	return strings.Trim(strings.Join(strings.Fields(out), " "), " -–—,:")
+}
+
 // Sanitize keeps what's usable from a suggestion: a known category, known
 // tags, valid dates, and a title without placeholders (people's are turned
 // back into their names).
 func Sanitize(sg store.Suggest, in Input, people []mask.Person) *store.Suggest {
 	out := &store.Suggest{}
-	if title, left := mask.Unmask(strings.TrimSpace(sg.Title), people); !left && len(title) <= 200 {
+	// A family member only counts when they're in what was sent: unsure
+	// models fill in [person:1] (or whoever) rather than leave them out.
+	sent := in.Title + "\n" + in.Text
+	absent := func(p string) bool { return personRe.MatchString(p) && !strings.Contains(sent, p) }
+	if title, left := mask.Unmask(dropPeople(strings.TrimSpace(sg.Title), absent), people); !left && len(title) <= 200 {
 		out.Title = title
 	}
 	for _, c := range in.Categories {
@@ -152,7 +174,7 @@ func Sanitize(sg store.Suggest, in Input, people []mask.Person) *store.Suggest {
 	}
 	for _, t := range sg.Tags {
 		i := slices.IndexFunc(in.Tags, func(v string) bool { return strings.EqualFold(v, strings.TrimSpace(t)) })
-		if i < 0 {
+		if i < 0 || absent(in.Tags[i]) {
 			continue
 		}
 		tag, left := mask.Unmask(in.Tags[i], people) // a person's placeholder: their name
