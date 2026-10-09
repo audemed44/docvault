@@ -59,6 +59,7 @@ export function filterQuery(f: Partial<Filter>, extra: Record<string, string> = 
   if (f.space) p.set("space", f.space);
   if (f.category) p.set("category", f.category);
   if (f.tag) p.set("tag", f.tag);
+  if (f.person) p.set("person", f.person);
   if (f.year) p.set("year", f.year);
   if (f.expiring) p.set("expiring", "1");
   if (f.status) p.set("status", f.status);
