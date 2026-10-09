@@ -38,8 +38,11 @@ const listeners = new Set<() => void>();
 
 export function navigate(url: string, replace = false) {
   if (url === window.location.pathname) return;
-  if (replace) history.replaceState(null, "", url);
-  else history.pushState(null, "", url);
+  // Each entry knows how deep into the app it is, so Back can tell
+  // whether there's a page of ours to go back to.
+  const depth: number = history.state?.depth ?? 0;
+  if (replace) history.replaceState({ depth }, "", url);
+  else history.pushState({ depth: depth + 1 }, "", url);
   window.scrollTo(0, 0);
   listeners.forEach((fn) => fn());
 }
@@ -75,4 +78,10 @@ export function useRoute(): Route {
     };
   }, []);
   return route;
+}
+
+/** Back to the previous page in the app, or to the fallback when there isn't one. */
+export function goBack(fallback = "/") {
+  if ((history.state?.depth ?? 0) > 0) history.back();
+  else navigate(fallback, true);
 }

@@ -1,4 +1,4 @@
-import { Check as CheckIcon, Copy, X } from "lucide-preact";
+import { Check as CheckIcon, ChevronDown, Copy, X } from "lucide-preact";
 import type { ComponentChildren } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import type { Tone } from "../lib";
@@ -149,4 +149,30 @@ export function useAction() {
 
 export function Empty(props: { children: ComponentChildren }) {
   return <div class="empty">{props.children}</div>;
+}
+
+/** A labelled row that opens to show more below it. */
+export function Disclosure(props: {
+  icon: ComponentChildren;
+  title: string;
+  open: boolean;
+  onToggle: () => void;
+  danger?: boolean;
+  children?: ComponentChildren;
+}) {
+  return (
+    <div class={`disclosure ${props.open ? "open" : ""} ${props.danger ? "danger" : ""}`}>
+      <button
+        type="button"
+        class="disclosure-head"
+        aria-expanded={props.open}
+        onClick={props.onToggle}
+      >
+        {props.icon}
+        <span class="disclosure-title">{props.title}</span>
+        <ChevronDown size={22} class="disclosure-chevron" />
+      </button>
+      {props.open && props.children && <div class="disclosure-body">{props.children}</div>}
+    </div>
+  );
 }
