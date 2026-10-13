@@ -16,6 +16,7 @@ import (
 	"time"
 	_ "time/tzdata" // the runtime image may have no zoneinfo; TZ needs this
 
+	"github.com/audemed44/docvault/internal/logging"
 	"github.com/audemed44/docvault/internal/process"
 	"github.com/audemed44/docvault/internal/server"
 	"github.com/audemed44/docvault/internal/store"
@@ -33,11 +34,11 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
 		os.Exit(healthcheck())
 	}
-	level := slog.LevelInfo
-	if os.Getenv("DOCVAULT_DEBUG") != "" {
-		level = slog.LevelDebug
+	// DOCVAULT_DEBUG still works: it's LOG_LEVEL=debug.
+	if os.Getenv("DOCVAULT_DEBUG") != "" && os.Getenv("LOG_LEVEL") == "" {
+		os.Setenv("LOG_LEVEL", "debug")
 	}
-	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})))
+	logging.Setup("docvault", os.Stderr)
 
 	token := os.Getenv("DOCVAULT_TOKEN") // Foyer's key; without it, no Foyer card
 	dataDir := env("DOCVAULT_DATA_DIR", "/data")
@@ -77,6 +78,7 @@ func main() {
 		Addr:              ":" + env("DOCVAULT_PORT", "8080"),
 		Handler:           app.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
+		ErrorLog:          logging.ServerErrorLog(),
 	}
 	go func() {
 		<-ctx.Done()

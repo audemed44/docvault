@@ -22,6 +22,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/audemed44/docvault/internal/logging"
 	"github.com/audemed44/docvault/internal/store"
 )
 
@@ -154,7 +155,7 @@ func (p *Processor) pool(ctx context.Context, wake chan struct{}, limit func(sto
 // readJob makes a document's PDF, thumbnail and text, then hands it to the
 // suggestion workers when it wants a suggestion.
 func (p *Processor) readJob(ctx context.Context, job *store.Job) {
-	start := time.Now()
+	ctx, run := logging.Job(ctx, "document.read", "document", job.ID)
 	res := p.read(ctx, job)
 	if ctx.Err() != nil {
 		return // shutting down: ResetJobs queues it again next time
@@ -169,10 +170,12 @@ func (p *Processor) readJob(ctx context.Context, job *store.Job) {
 		err = p.Store.FinishJob(ctx, job.ID, res)
 	}
 	if err != nil {
-		slog.Error("processing: save", "document", job.ID, "err", err)
+		slog.ErrorContext(ctx, "processing: save", "document", job.ID, "err", err)
 	}
-	slog.Info("read", "document", job.ID, "pages", res.Pages, "text", res.TextSource,
-		"took", time.Since(start).Round(time.Millisecond), "err", res.Error, "suggestion", suggest)
+	if err == nil && res.Error != "" {
+		err = errors.New(res.Error)
+	}
+	run.End(err, "pages", res.Pages, "text", res.TextSource, "suggestion", suggest)
 }
 
 // suggestJob asks the classifier about a document that was read.
@@ -185,7 +188,7 @@ func (p *Processor) suggestJob(ctx context.Context, job *store.Job) {
 		poke(p.readWake)
 		return
 	}
-	start := time.Now()
+	ctx, run := logging.Job(ctx, "document.suggest", "document", job.ID)
 	res := store.JobResult{Pages: job.Pages, Text: job.Text, TextSource: job.TextSource, OCRLang: job.OCRLang,
 		Error: job.Error, Warning: job.Warning}
 	if p.Classifier != nil {
@@ -194,11 +197,13 @@ func (p *Processor) suggestJob(ctx context.Context, job *store.Job) {
 	if ctx.Err() != nil {
 		return
 	}
-	if err := p.Store.FinishSuggestion(ctx, job.ID, res); err != nil {
-		slog.Error("processing: save", "document", job.ID, "err", err)
+	err := p.Store.FinishSuggestion(ctx, job.ID, res)
+	if err != nil {
+		slog.ErrorContext(ctx, "processing: save", "document", job.ID, "err", err)
+	} else if res.ClassifyError != "" {
+		err = errors.New(res.ClassifyError)
 	}
-	slog.Info("suggested", "document", job.ID, "took", time.Since(start).Round(time.Millisecond),
-		"err", res.ClassifyError)
+	run.End(err)
 }
 
 // CachePDF is the PDF made from a photo document.
@@ -332,7 +337,7 @@ func (p *Processor) classify(ctx context.Context, job *store.Job, res *store.Job
 	res.ClassifierInput = in.InputText()
 	if err != nil {
 		if ctx.Err() == nil {
-			slog.Warn("classifier", "document", job.ID, "err", err)
+			slog.WarnContext(ctx, "classifier", "document", job.ID, "err", err)
 			res.ClassifyError = err.Error()
 		}
 		return
@@ -453,7 +458,7 @@ func ocr(ctx context.Context, pdf string, pages int, lang, tmp string) (string, 
 		}
 		out, err := run(ctx, "tesseract", img+".png", "stdout", "-l", lang, "--psm", "3")
 		if err != nil && ctx.Err() == nil {
-			slog.Warn("OCR: trying the page as one block", "pdf", pdf, "page", page, "err", err)
+			slog.WarnContext(ctx, "OCR: trying the page as one block", "pdf", pdf, "page", page, "err", err)
 			out, err = run(ctx, "tesseract", img+".png", "stdout", "-l", lang, "--psm", "6")
 		}
 		os.Remove(img + ".png")
@@ -461,7 +466,7 @@ func ocr(ctx context.Context, pdf string, pages int, lang, tmp string) (string, 
 			return "", nil, ctx.Err()
 		}
 		if err != nil {
-			slog.Warn("OCR: skipping the page", "pdf", pdf, "page", page, "err", err)
+			slog.WarnContext(ctx, "OCR: skipping the page", "pdf", pdf, "page", page, "err", err)
 			skipped = append(skipped, page)
 			lastErr = fmt.Errorf("page %d: %w", page, err)
 			out = ""

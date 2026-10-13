@@ -85,7 +85,7 @@ func (s *Server) startImport(w http.ResponseWriter, r *http.Request) {
 	u := currentUser(r)
 	folder := s.importFolder(u)
 	if err := os.MkdirAll(folder, 0o755); err != nil {
-		storeError(w, err)
+		storeError(w, r, err)
 		return
 	}
 	files := importFiles(folder)

@@ -17,7 +17,7 @@ import (
 func (s *Server) listCategories(w http.ResponseWriter, r *http.Request) {
 	cats, err := s.Store.Categories(r.Context(), currentUser(r).ID)
 	if err != nil {
-		storeError(w, err)
+		storeError(w, r, err)
 		return
 	}
 	if r.URL.Query().Get("format") == "names" {
@@ -49,7 +49,7 @@ func (s *Server) saveCategories(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusConflict, "two categories have the same name")
 			return
 		}
-		storeError(w, err)
+		storeError(w, r, err)
 		return
 	}
 	s.listCategories(w, r)
@@ -67,7 +67,7 @@ type settingsInfo struct {
 func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 	set, err := s.Store.Settings(r.Context())
 	if err != nil {
-		storeError(w, err)
+		storeError(w, r, err)
 		return
 	}
 	langs := process.Languages()
@@ -152,7 +152,7 @@ func (s *Server) saveSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.Store.SaveSettings(r.Context(), set); err != nil {
-		storeError(w, err)
+		storeError(w, r, err)
 		return
 	}
 	s.Processor.Wake() // the worker limits may have changed
@@ -170,7 +170,7 @@ func (s *Server) maskPreview(w http.ResponseWriter, r *http.Request) {
 	}
 	set, err := s.Store.Settings(r.Context())
 	if err != nil {
-		storeError(w, err)
+		storeError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{
@@ -181,7 +181,7 @@ func (s *Server) maskPreview(w http.ResponseWriter, r *http.Request) {
 func (s *Server) listTagVocab(w http.ResponseWriter, r *http.Request) {
 	tags, err := s.Store.TagVocab(r.Context())
 	if err != nil {
-		storeError(w, err)
+		storeError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, tags)
@@ -191,12 +191,12 @@ func (s *Server) listTagVocab(w http.ResponseWriter, r *http.Request) {
 func (s *Server) unlistedTags(w http.ResponseWriter, r *http.Request) {
 	tags, err := s.Store.UnlistedTags(r.Context(), currentUser(r).ID)
 	if err != nil {
-		storeError(w, err)
+		storeError(w, r, err)
 		return
 	}
 	set, err := s.Store.Settings(r.Context())
 	if err != nil {
-		storeError(w, err)
+		storeError(w, r, err)
 		return
 	}
 	out := []store.Count{}
@@ -226,7 +226,7 @@ func (s *Server) saveTagVocab(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusConflict, "a tag is listed twice: "+strings.TrimPrefix(err.Error(), store.ErrConflict.Error()+": "))
 			return
 		}
-		storeError(w, err)
+		storeError(w, r, err)
 		return
 	}
 	s.listTagVocab(w, r)

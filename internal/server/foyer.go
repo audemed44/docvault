@@ -78,12 +78,12 @@ func (s *Server) foyerWidget(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		storeError(w, err)
+		storeError(w, r, err)
 		return
 	}
 	f, err := s.Store.Facets(ctx, admin.ID)
 	if err != nil {
-		storeError(w, err)
+		storeError(w, r, err)
 		return
 	}
 	out.Stats = append(out.Stats,
@@ -105,7 +105,7 @@ func (s *Server) foyerWidget(w http.ResponseWriter, r *http.Request) {
 	soon := now.AddDate(0, 0, store.ExpiringDays).Format(time.DateOnly)
 	docs, _, err := s.Store.Search(ctx, admin.ID, store.Filter{Expiring: true, Limit: 12})
 	if err != nil {
-		storeError(w, err)
+		storeError(w, r, err)
 		return
 	}
 	for _, d := range docs {
@@ -119,7 +119,7 @@ func (s *Server) foyerWidget(w http.ResponseWriter, r *http.Request) {
 	} else {
 		docs, _, err = s.Store.Search(ctx, admin.ID, store.Filter{Limit: 8})
 		if err != nil {
-			storeError(w, err)
+			storeError(w, r, err)
 			return
 		}
 		for _, d := range docs {
@@ -149,7 +149,7 @@ func foyerDoc(d store.Document, caption string) foyerItem {
 func (s *Server) foyerThumb(w http.ResponseWriter, r *http.Request) {
 	admin, err := s.Store.FirstAdmin(r.Context())
 	if err != nil {
-		storeError(w, err)
+		storeError(w, r, err)
 		return
 	}
 	s.documentThumb(w, r.WithContext(withUser(r.Context(), admin)))
