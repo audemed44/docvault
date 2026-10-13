@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/audemed44/docvault/internal/logging"
 	"github.com/audemed44/docvault/internal/store"
 )
 
@@ -50,6 +51,7 @@ type ctxKey int
 const userKey ctxKey = 0
 
 func withUser(ctx context.Context, u *store.User) context.Context {
+	logging.SetUser(ctx, u.Username) // on this request's log lines
 	return context.WithValue(ctx, userKey, u)
 }
 
@@ -179,7 +181,7 @@ func (s *Server) getSession(w http.ResponseWriter, r *http.Request) {
 func (s *Server) startSession(w http.ResponseWriter, r *http.Request, u *store.User) {
 	value := secret()
 	if err := s.Store.CreateSession(r.Context(), hashSecret(value), u.ID); err != nil {
-		storeError(w, err)
+		storeError(w, r, err)
 		return
 	}
 	http.SetCookie(w, &http.Cookie{
@@ -199,17 +201,21 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	}
 	u, err := s.Store.UserByName(r.Context(), strings.TrimSpace(body.Username))
 	if errors.Is(err, store.ErrNotFound) {
+		logging.Audit(r.Context(), "session.refused", "username", strings.TrimSpace(body.Username))
 		writeError(w, http.StatusUnauthorized, "no such user: ask whoever runs Docvault to add you")
 		return
 	}
 	if err != nil {
-		storeError(w, err)
+		storeError(w, r, err)
 		return
 	}
+	logging.SetUser(r.Context(), u.Username)
+	logging.Audit(r.Context(), "session.signin")
 	s.startSession(w, r, u)
 }
 
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
+	logging.Audit(r.Context(), "session.signout")
 	if c, err := r.Cookie(cookieName); err == nil && c.Value != "" {
 		_ = s.Store.DeleteSession(r.Context(), hashSecret(c.Value))
 	}
@@ -262,7 +268,7 @@ func (s *Server) setup(w http.ResponseWriter, r *http.Request) {
 	}
 	u := &store.User{Username: body.Username, Name: body.Name, Admin: true}
 	if err := s.Store.CreateUser(r.Context(), u); err != nil {
-		storeError(w, err)
+		storeError(w, r, err)
 		return
 	}
 	s.startSession(w, r, u)
@@ -293,7 +299,7 @@ func (s *Server) updateMe(w http.ResponseWriter, r *http.Request) {
 		u.TextSize = *acc.TextSize
 	}
 	if err := s.Store.UpdateUser(r.Context(), &u); err != nil {
-		storeError(w, err)
+		storeError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, u)
@@ -304,7 +310,7 @@ func (s *Server) updateMe(w http.ResponseWriter, r *http.Request) {
 func (s *Server) listUsers(w http.ResponseWriter, r *http.Request) {
 	users, err := s.Store.Users(r.Context())
 	if err != nil {
-		storeError(w, err)
+		storeError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, users)
@@ -329,7 +335,7 @@ func (s *Server) saveUser(w http.ResponseWriter, r *http.Request) {
 				writeError(w, http.StatusConflict, "that username is taken")
 				return
 			}
-			storeError(w, err)
+			storeError(w, r, err)
 			return
 		}
 		writeJSON(w, http.StatusCreated, u)
@@ -341,7 +347,7 @@ func (s *Server) saveUser(w http.ResponseWriter, r *http.Request) {
 	}
 	u, err := s.Store.User(r.Context(), id)
 	if err != nil {
-		storeError(w, err)
+		storeError(w, r, err)
 		return
 	}
 	if u.ID == currentUser(r).ID && !body.Admin {
@@ -353,7 +359,7 @@ func (s *Server) saveUser(w http.ResponseWriter, r *http.Request) {
 		u.TextSize = *body.TextSize
 	}
 	if err := s.Store.UpdateUser(r.Context(), u); err != nil {
-		storeError(w, err)
+		storeError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, u)
@@ -373,7 +379,7 @@ func (s *Server) deleteUser(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusConflict, "they still have private documents: move them to Family or delete them first")
 			return
 		}
-		storeError(w, err)
+		storeError(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

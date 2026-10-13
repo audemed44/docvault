@@ -229,7 +229,7 @@ func filterOf(r *http.Request) store.Filter {
 func (s *Server) listDocuments(w http.ResponseWriter, r *http.Request) {
 	docs, total, err := s.Store.Search(r.Context(), currentUser(r).ID, filterOf(r))
 	if err != nil {
-		storeError(w, err)
+		storeError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"documents": docs, "total": total})
@@ -238,12 +238,12 @@ func (s *Server) listDocuments(w http.ResponseWriter, r *http.Request) {
 func (s *Server) facets(w http.ResponseWriter, r *http.Request) {
 	f, err := s.Store.Facets(r.Context(), currentUser(r).ID)
 	if err != nil {
-		storeError(w, err)
+		storeError(w, r, err)
 		return
 	}
 	set, err := s.Store.Settings(r.Context())
 	if err != nil {
-		storeError(w, err)
+		storeError(w, r, err)
 		return
 	}
 	names := []string{}
@@ -262,7 +262,7 @@ func (s *Server) document(w http.ResponseWriter, r *http.Request) (*store.Docume
 	}
 	d, err := s.Store.Document(r.Context(), currentUser(r).ID, id)
 	if err != nil {
-		storeError(w, err)
+		storeError(w, r, err)
 		return nil, false
 	}
 	return d, true
@@ -281,7 +281,7 @@ func (s *Server) documentText(w http.ResponseWriter, r *http.Request) {
 	}
 	text, err := s.Store.DocumentText(r.Context(), currentUser(r).ID, id)
 	if err != nil {
-		storeError(w, err)
+		storeError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"text": text})
@@ -340,12 +340,12 @@ func (s *Server) saveDocument(w http.ResponseWriter, r *http.Request, d *store.D
 			writeError(w, http.StatusBadRequest, "unknown category")
 			return
 		}
-		storeError(w, err)
+		storeError(w, r, err)
 		return
 	}
 	d, err := s.Store.Document(r.Context(), me.ID, d.ID)
 	if err != nil {
-		storeError(w, err)
+		storeError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, d)
@@ -358,7 +358,7 @@ func (s *Server) deleteDocument(w http.ResponseWriter, r *http.Request) {
 	}
 	d, err := s.Store.DeleteDocument(r.Context(), currentUser(r).ID, id)
 	if err != nil {
-		storeError(w, err)
+		storeError(w, r, err)
 		return
 	}
 	s.removeFiles(d.ID)
@@ -388,7 +388,7 @@ func (s *Server) reprocess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.Store.Requeue(r.Context(), currentUser(r).ID, d.ID, body.OCR, body.Lang, false); err != nil {
-		storeError(w, err)
+		storeError(w, r, err)
 		return
 	}
 	s.Processor.Wake()
@@ -420,7 +420,7 @@ func (s *Server) applySuggestion(w http.ResponseWriter, r *http.Request) {
 	}
 	s.suggest(d)
 	if err := s.Store.ClearSuggestion(r.Context(), currentUser(r).ID, d.ID); err != nil {
-		storeError(w, err)
+		storeError(w, r, err)
 		return
 	}
 	s.saveDocument(w, r, d)
@@ -463,7 +463,7 @@ func (s *Server) selection(w http.ResponseWriter, r *http.Request, f store.Filte
 	}
 	ids, err := s.Store.MatchingIDs(r.Context(), currentUser(r).ID, f)
 	if err != nil {
-		storeError(w, err)
+		storeError(w, r, err)
 		return nil, false
 	}
 	return ids, true
@@ -527,7 +527,7 @@ func (s *Server) classifierInput(w http.ResponseWriter, r *http.Request) {
 	}
 	text, err := s.Store.ClassifierInput(r.Context(), currentUser(r).ID, id)
 	if err != nil {
-		storeError(w, err)
+		storeError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"text": text})
@@ -539,7 +539,7 @@ func (s *Server) dismissSuggestion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.Store.ClearSuggestion(r.Context(), currentUser(r).ID, id); err != nil {
-		storeError(w, err)
+		storeError(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

@@ -23,3 +23,9 @@ services:
     # big import, 3 documents read at once (DOCVAULT_WORKERS=3, or Settings →
     # Processing) with mem_limit: 1536m is ~3x faster.
     mem_limit: 768m
+    # Cap Docker's copy of the logs: 3 files of 10 MB, oldest dropped.
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
